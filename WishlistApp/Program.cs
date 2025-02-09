@@ -6,6 +6,9 @@ using WishlistApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://*:{port}");
 // Добавляем сервисы
 builder.Services.AddSingleton<CloudinaryService>();
 builder.Services.AddSingleton<MongoDbContext>();

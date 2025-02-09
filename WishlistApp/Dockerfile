@@ -2,14 +2,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /app  # Делаем рабочую директорию
 
-# Копируем ВСЕ файлы проекта, чтобы избежать проблем с путями
-COPY WishlistApp/ WishlistApp/
+# Копируем ВСЕ файлы проекта
+COPY . .
 
-# Переходим в директорию проекта
+# Указываем точное расположение проекта перед восстановлением зависимостей
 WORKDIR /app/WishlistApp
 
 # Восстанавливаем зависимости
-RUN dotnet restore
+RUN dotnet restore WishlistApp.csproj
 
 # Собираем проект
 RUN dotnet publish -c Release -o /app/publish

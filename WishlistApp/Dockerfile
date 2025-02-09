@@ -1,15 +1,15 @@
 # Используем .NET SDK для сборки
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /app  # Делаем рабочую директорию
+WORKDIR /app  # Устанавливаем рабочую директорию
 
-# Копируем ВСЕ файлы проекта
-COPY . .
+# Копируем ВСЕ файлы проекта (важно!)
+COPY . /app/
 
-# Указываем точное расположение проекта перед восстановлением зависимостей
+# Переходим в папку с проектом (если проект в папке WishlistApp)
 WORKDIR /app/WishlistApp
 
 # Восстанавливаем зависимости
-RUN dotnet restore WishlistApp.csproj
+RUN dotnet restore
 
 # Собираем проект
 RUN dotnet publish -c Release -o /app/publish

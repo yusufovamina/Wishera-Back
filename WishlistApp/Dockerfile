@@ -1,20 +1,19 @@
-# Используем официальное изображение .NET SDK
-FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
+# Используем официальный образ .NET для запуска
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
+EXPOSE 5000
 
-# Копируем проект и устанавливаем зависимости
-COPY . ./
-RUN dotnet restore
-RUN dotnet publish -c Release -o out
+# Используем .NET SDK для сборки приложения
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY ["WishlistApp.csproj", "./"]
+RUN dotnet restore "WishlistApp.csproj"
+COPY . .
+RUN dotnet publish -c Release -o /app/publish
 
-# Используем ASP.NET Core Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:7.0
+# Финальный образ для запуска
+FROM base AS final
 WORKDIR /app
-COPY --from=build /app/out .
-
-# Указываем порт для работы (Render автоматически подставит его)
-ENV ASPNETCORE_URLS=http://+:10000
-EXPOSE 10000
-
-# Запуск приложения
-CMD ["dotnet", "Wishlist.dll"]
+COPY --from=build /app/publish .
+ENV ASPNETCORE_URLS=http://+:5000
+CMD ["dotnet", "WishlistApp.dll"]

@@ -182,6 +182,19 @@ public async Task<IActionResult> GetUserWishlist(
     return Ok(gifts);
 }
 
+[HttpGet("{id}")]
+public async Task<IActionResult> GetGiftById(string id)
+{
+    var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
+
+    if (gift == null)
+    {
+        return NotFound(new { message = "Gift not found" });
+    }
+
+    return Ok(gift);
+}
+
 
 [HttpGet("shared/{userId}")]
 public async Task<IActionResult> GetSharedWishlist(string userId)

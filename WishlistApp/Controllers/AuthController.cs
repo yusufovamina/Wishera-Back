@@ -71,6 +71,20 @@ public async Task<IActionResult> Login([FromBody] User loginUser)
     });
 }
 
+ [HttpGet("user/{wishlistId}")]
+        public async Task<IActionResult> GetUserByWishlistId(string wishlistId)
+        {
+            // Find the user by their wishlistId (which is the same as their userId)
+            var user = await _context.Users.Find(u => u.Id == wishlistId).FirstOrDefaultAsync();
+            
+            if (user == null)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+
+            return Ok(new { username = user.Username });
+        }
+
         [HttpPost("set-friend-role")]
         public async Task<IActionResult> SetFriendRole([FromBody] string userId)
         {

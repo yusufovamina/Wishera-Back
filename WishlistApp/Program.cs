@@ -1,71 +1,77 @@
+using CloudinaryDotNet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using MongoDB.Driver;
 using System.Text;
 using WishlistApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
-builder.WebHost.UseUrls($"http://*:{port}");
-// Добавляем сервисы
-builder.Services.AddSingleton<CloudinaryService>();
-builder.Services.AddSingleton<MongoDbContext>();
+// Add services to the container
 builder.Services.AddControllers();
 
-// Настройка CORS (чтобы можно было вызывать API с фронтенда)
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll",
-        policy => policy.AllowAnyOrigin()
-                        .AllowAnyMethod()
-                        .AllowAnyHeader());
-});
+// Configure MongoDB
+var mongoClient = new MongoClient(builder.Configuration.GetConnectionString("MongoDB"));
+var database = mongoClient.GetDatabase("WishlistApp");
+builder.Services.AddSingleton(database);
 
-// Настройка аутентификации JWT
-var key = Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"]);
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.RequireHttpsMetadata = false;
-    options.SaveToken = true;
-    options.TokenValidationParameters = new TokenValidationParameters
+// Register MongoDbContext
+builder.Services.AddSingleton<MongoDbContext>(sp => new MongoDbContext(database));
+
+// Configure Cloudinary
+var cloudinaryAccount = new Account(
+    builder.Configuration["Cloudinary:CloudName"],
+    builder.Configuration["Cloudinary:ApiKey"],
+    builder.Configuration["Cloudinary:ApiSecret"]
+);
+var cloudinary = new Cloudinary(cloudinaryAccount);
+builder.Services.AddSingleton(cloudinary);
+
+// Configure JWT Authentication
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
-        ValidateIssuer = false,
-        ValidateAudience = false
-    };
-});
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured"))),
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero
+        };
+    });
 
-// Добавляем Swagger + JWT Авторизацию
+// Register services
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IWishlistService, WishlistService>();
+builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+
+// Configure Swagger
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
+builder.Services.AddSwaggerGen(c =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo
+    c.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Wishlist API",
+        Title = "WishlistApp API",
         Version = "v1",
-        Description = "API для управления вишлистами и подарками"
+        Description = "A social network for sharing wishlists"
     });
 
-    // Настройка Bearer-токена в Swagger
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    // Configure Swagger to use JWT Authentication
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
+        Description = "JWT Authorization header using the Bearer scheme",
         Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "Bearer",
-        BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Введите JWT токен в формате: Bearer {токен}"
+        Type = SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
     });
 
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
             new OpenApiSecurityScheme
@@ -76,31 +82,137 @@ builder.Services.AddSwaggerGen(options =>
                     Id = "Bearer"
                 }
             },
-            new string[] {}
+            Array.Empty<string>()
         }
+    });
+});
+
+// Configure CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin()
+               .AllowAnyMethod()
+               .AllowAnyHeader();
     });
 });
 
 var app = builder.Build();
 
-// Настройка CORS перед аутентификацией
-app.UseCors("AllowAll");
-
-// Включаем Swagger
+// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Wishlist API v1");
-        options.RoutePrefix = string.Empty; // Открывает Swagger по `http://localhost:5000/`
-    });
+    app.UseSwaggerUI();
 }
 
-// Middleware для аутентификации и авторизации
+app.UseHttpsRedirection();
+app.UseCors("AllowAll");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Create indexes for MongoDB collections
+var usersCollection = database.GetCollection<MongoDB.Bson.BsonDocument>("Users");
+var wishlistsCollection = database.GetCollection<MongoDB.Bson.BsonDocument>("Wishlists");
+var likesCollection = database.GetCollection<MongoDB.Bson.BsonDocument>("Likes");
+var commentsCollection = database.GetCollection<MongoDB.Bson.BsonDocument>("Comments");
+var feedCollection = database.GetCollection<MongoDB.Bson.BsonDocument>("Feed");
+var relationshipsCollection = database.GetCollection<MongoDB.Bson.BsonDocument>("Relationships");
+
+// Create indexes for Users collection
+var usersIndexes = new[]
+{
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("Email"),
+        new CreateIndexOptions { 
+            Unique = true,
+            Sparse = true  // This ensures the unique index only applies to documents where Email exists
+        }
+    ),
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("Username"),
+        new CreateIndexOptions { 
+            Unique = true,
+            Sparse = true  // This ensures the unique index only applies to documents where Username exists
+        }
+    ),
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Text("Username")
+    )
+};
+
+// Create indexes for Wishlists collection
+var wishlistsIndexes = new[]
+{
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("UserId")
+    ),
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("IsPublic")
+    ),
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Text("Title").Text("Description")
+    )
+};
+
+// Create indexes for Likes collection
+var likesIndexes = new[]
+{
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Combine(
+            Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("UserId"),
+            Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("WishlistId")
+        ),
+        new CreateIndexOptions { Unique = true }
+    )
+};
+
+// Create indexes for Comments collection
+var commentsIndexes = new[]
+{
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("WishlistId")
+    ),
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("UserId")
+    )
+};
+
+// Create indexes for Feed collection
+var feedIndexes = new[]
+{
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("UserId")
+    ),
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Descending("CreatedAt")
+    )
+};
+
+// Create indexes for Relationships collection
+var relationshipsIndexes = new[]
+{
+    new CreateIndexModel<MongoDB.Bson.BsonDocument>(
+        Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Combine(
+            Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("FollowerId"),
+            Builders<MongoDB.Bson.BsonDocument>.IndexKeys.Ascending("FollowingId")
+        ),
+        new CreateIndexOptions { Unique = true }
+    )
+};
+
+// Create all indexes
+await Task.WhenAll(
+    usersCollection.Indexes.CreateManyAsync(usersIndexes),
+    wishlistsCollection.Indexes.CreateManyAsync(wishlistsIndexes),
+    likesCollection.Indexes.CreateManyAsync(likesIndexes),
+    commentsCollection.Indexes.CreateManyAsync(commentsIndexes),
+    feedCollection.Indexes.CreateManyAsync(feedIndexes),
+    relationshipsCollection.Indexes.CreateManyAsync(relationshipsIndexes)
+);
 
 app.Run();

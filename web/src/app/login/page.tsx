@@ -1,6 +1,9 @@
 "use client";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { login } from "../api";
 
 function AnimatedBlobs() {
   return (
@@ -15,6 +18,27 @@ function AnimatedBlobs() {
 }
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const data = await login(email, password);
+      localStorage.setItem("token", data.token);
+      router.push("/");
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [email, password, router]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white relative overflow-hidden">
       <AnimatedBlobs />
@@ -25,10 +49,11 @@ export default function LoginPage() {
         transition={{ duration: 0.7 }}
       >
         <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">Login to Wishlist</h1>
-        <form className="flex flex-col gap-4">
-          <input type="email" placeholder="Email" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white/90 text-gray-700" autoComplete="email" required />
-          <input type="password" placeholder="Password" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white/90 text-gray-700" autoComplete="current-password" required />
-          <button type="submit" className="mt-2 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-semibold text-lg shadow-md hover:scale-105 transition-transform" disabled>Login</button>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          <input type="email" placeholder="Email" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white/90 text-gray-700" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="Password" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white/90 text-gray-700" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} />
+          <button type="submit" className="mt-2 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-semibold text-lg shadow-md hover:scale-105 transition-transform" disabled={loading}>{loading ? "Logging in..." : "Login"}</button>
+          {error && <div className="text-red-500 text-sm text-center mt-2">{error}</div>}
         </form>
         <div className="mt-6 text-center text-gray-500 text-sm">
           Don&apos;t have an account?{' '}

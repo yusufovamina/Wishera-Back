@@ -1,6 +1,9 @@
 "use client";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { register } from "../api";
 
 function AnimatedBlobs() {
   return (
@@ -15,6 +18,28 @@ function AnimatedBlobs() {
 }
 
 export default function RegisterPage() {
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const data = await register(username, email, password);
+      localStorage.setItem("token", data.token);
+      router.push("/");
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Registration failed");
+    } finally {
+      setLoading(false);
+    }
+  }, [username, email, password, router]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-yellow-50 to-white relative overflow-hidden">
       <AnimatedBlobs />
@@ -25,11 +50,12 @@ export default function RegisterPage() {
         transition={{ duration: 0.7 }}
       >
         <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">Create Your Account</h1>
-        <form className="flex flex-col gap-4">
-          <input type="text" placeholder="Name" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" autoComplete="name" required />
-          <input type="email" placeholder="Email" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" autoComplete="email" required />
-          <input type="password" placeholder="Password" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" autoComplete="new-password" required />
-          <button type="submit" className="mt-2 py-3 rounded-lg bg-gradient-to-r from-yellow-400 to-orange-400 text-white font-semibold text-lg shadow-md hover:scale-105 transition-transform" disabled>Sign Up</button>
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          <input type="text" placeholder="Name" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" autoComplete="name" required value={username} onChange={e => setUsername(e.target.value)} />
+          <input type="email" placeholder="Email" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="Password" className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" autoComplete="new-password" required value={password} onChange={e => setPassword(e.target.value)} />
+          <button type="submit" className="mt-2 py-3 rounded-lg bg-gradient-to-r from-yellow-400 to-orange-400 text-white font-semibold text-lg shadow-md hover:scale-105 transition-transform" disabled={loading}>{loading ? "Signing up..." : "Sign Up"}</button>
+          {error && <div className="text-red-500 text-sm text-center mt-2">{error}</div>}
         </form>
         <div className="mt-6 text-center text-gray-500 text-sm">
           Already have an account?{' '}

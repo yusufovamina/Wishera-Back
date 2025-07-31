@@ -27,6 +27,10 @@ namespace WishlistApp.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime LastActive { get; set; } = DateTime.UtcNow;
 
+        // Password reset fields
+        public string? ResetToken { get; set; }
+        public DateTime? ResetTokenExpiry { get; set; }
+
         // Social features
         public List<string> FollowingIds { get; set; } = new List<string>();
         public List<string> FollowerIds { get; set; } = new List<string>();

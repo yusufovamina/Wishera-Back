@@ -51,6 +51,34 @@ namespace WishlistApp.Controllers
             }
         }
 
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult> ForgotPassword(ForgotPasswordDTO forgotPasswordDto)
+        {
+            try
+            {
+                await _authService.ForgotPasswordAsync(forgotPasswordDto.Email);
+                return Ok(new { message = "Password reset link sent to your email" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<ActionResult> ResetPassword(ResetPasswordDTO resetPasswordDto)
+        {
+            try
+            {
+                await _authService.ResetPasswordAsync(resetPasswordDto.Token, resetPasswordDto.NewPassword);
+                return Ok(new { message = "Password reset successfully" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpGet("check-email")]
         public async Task<ActionResult<bool>> CheckEmailAvailability([FromQuery] string email)
         {

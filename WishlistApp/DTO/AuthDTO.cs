@@ -27,6 +27,23 @@ namespace WishlistApp.DTO
         public required string Password { get; set; }
     }
 
+    public class ForgotPasswordDTO
+    {
+        [Required]
+        [EmailAddress]
+        public required string Email { get; set; }
+    }
+
+    public class ResetPasswordDTO
+    {
+        [Required]
+        public required string Token { get; set; }
+
+        [Required]
+        [StringLength(100, MinimumLength = 6)]
+        public required string NewPassword { get; set; }
+    }
+
     public class AuthResponseDTO
     {
         public required string Token { get; set; }

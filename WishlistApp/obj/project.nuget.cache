@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "+kA6KBtfssA=",
+  "dgSpecHash": "Wse9K0K9xnE=",
   "success": true,
-  "projectFilePath": "C:\\Users\\yusufova_a\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj",
+  "projectFilePath": "C:\\Users\\yusufova_a\\WishlistApp\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\yusufova_a\\.nuget\\packages\\awssdk.core\\3.7.100.14\\awssdk.core.3.7.100.14.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\awssdk.securitytoken\\3.7.100.14\\awssdk.securitytoken.3.7.100.14.nupkg.sha512",

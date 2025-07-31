@@ -2,8 +2,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { register } from "../api";
+import { forgotPassword } from "../api";
 import Notification from "../../components/Notification";
 
 function AnimatedBlobs() {
@@ -18,13 +17,9 @@ function AnimatedBlobs() {
   );
 }
 
-export default function RegisterPage() {
-  const [username, setUsername] = useState("");
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
   const [notification, setNotification] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -40,36 +35,31 @@ export default function RegisterPage() {
     setLoading(true);
     setNotification({ type: 'success', message: '', isVisible: false });
     
-    try {
-      const data = await register(username, email, password);
-      localStorage.setItem("token", data.token);
-      setNotification({
-        type: 'success',
-        message: 'Account created successfully! Redirecting...',
-        isVisible: true
-      });
-      
-      // Redirect after showing success message
-      setTimeout(() => {
-        router.push("/");
-      }, 1500);
-    } catch (err: any) {
-      setNotification({
-        type: 'error',
-        message: err.response?.data?.message || "Registration failed",
-        isVisible: true
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [username, email, password, router]);
+          try {
+        await forgotPassword(email);
+        setNotification({
+          type: 'success',
+          message: 'Password reset link sent to your email! Check your inbox (and spam folder).',
+          isVisible: true
+        });
+        setEmail("");
+      } catch (err: any) {
+        setNotification({
+          type: 'error',
+          message: err.response?.data?.message || "Failed to send reset email. Please check your email address and try again.",
+          isVisible: true
+        });
+      } finally {
+        setLoading(false);
+      }
+  }, [email]);
 
   const closeNotification = () => {
     setNotification(prev => ({ ...prev, isVisible: false }));
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-yellow-50 to-white relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-white relative overflow-hidden">
       <AnimatedBlobs />
       <motion.div
         className="relative z-10 bg-white/80 shadow-xl rounded-2xl p-8 w-full max-w-md border border-gray-100 backdrop-blur-lg"
@@ -77,46 +67,31 @@ export default function RegisterPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7 }}
       >
-        <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">Create Your Account</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-2 text-center">Forgot Password?</h1>
+        <p className="text-gray-600 text-center mb-6">Enter your email address and we'll send you a link to reset your password.</p>
+        
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <input 
-            type="text" 
-            placeholder="Name" 
-            className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" 
-            autoComplete="name" 
-            required 
-            value={username} 
-            onChange={e => setUsername(e.target.value)} 
-          />
-          <input 
             type="email" 
-            placeholder="Email" 
-            className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" 
+            placeholder="Enter your email" 
+            className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white/90 text-gray-700" 
             autoComplete="email" 
             required 
             value={email} 
             onChange={e => setEmail(e.target.value)} 
           />
-          <input 
-            type="password" 
-            placeholder="Password" 
-            className="px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-yellow-400 bg-white/90 text-gray-700" 
-            autoComplete="new-password" 
-            required 
-            value={password} 
-            onChange={e => setPassword(e.target.value)} 
-          />
           <button 
             type="submit" 
-            className="mt-2 py-3 rounded-lg bg-gradient-to-r from-yellow-400 to-orange-400 text-white font-semibold text-lg shadow-md hover:scale-105 transition-transform" 
+            className="mt-2 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-semibold text-lg shadow-md hover:scale-105 transition-transform" 
             disabled={loading}
           >
-            {loading ? "Signing up..." : "Sign Up"}
+            {loading ? "Sending..." : "Send Reset Link"}
           </button>
         </form>
+        
         <div className="mt-6 text-center text-gray-500 text-sm">
-          Already have an account?{' '}
-          <Link href="/login" className="text-yellow-500 hover:underline font-medium">Login</Link>
+          Remember your password?{' '}
+          <Link href="/login" className="text-indigo-500 hover:underline font-medium">Back to Login</Link>
         </div>
       </motion.div>
       

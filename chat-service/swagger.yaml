@@ -1,0 +1,29 @@
+openapi: 3.0.0
+info:
+  title: Chat Service API
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000
+paths:
+  /token:
+    post:
+      summary: Generate a Stream Chat token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+      responses:
+        '200':
+          description: Token generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string

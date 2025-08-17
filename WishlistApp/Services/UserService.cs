@@ -3,6 +3,7 @@ using CloudinaryDotNet.Actions;
 using MongoDB.Driver;
 using WishlistApp.DTO;
 using WishlistApp.Models;
+using WishlistApp.Services;
 
 namespace WishlistApp.Services
 {
@@ -33,8 +34,31 @@ namespace WishlistApp.Services
 
         public async Task<UserProfileDTO> GetUserProfileAsync(string userId, string currentUserId)
         {
-            var user = await _users.Find(u => u.Id == userId).FirstOrDefaultAsync()
-                ?? throw new KeyNotFoundException("User not found");
+            Console.WriteLine($"GetUserProfileAsync called with userId: '{userId}', currentUserId: '{currentUserId}'");
+            
+            // Validate ObjectId format with better error handling
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(userId, "userId");
+                ObjectIdValidator.ValidateObjectId(currentUserId, "currentUserId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
+            // Handle both ObjectId and string user IDs
+            var user = await _users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+            if (user == null)
+            {
+                // Try to find by username if ID lookup fails
+                user = await _users.Find(u => u.Username == userId).FirstOrDefaultAsync();
+                if (user == null)
+                {
+                    throw new KeyNotFoundException("User not found");
+                }
+            }
 
             var isFollowing = await _relationships.Find(r => 
                 r.FollowerId == currentUserId && r.FollowingId == userId).AnyAsync();
@@ -58,13 +82,29 @@ namespace WishlistApp.Services
 
         public async Task<UserProfileDTO> UpdateUserProfileAsync(string userId, UpdateUserProfileDTO updateDto)
         {
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(userId, "userId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
             var update = Builders<User>.Update
                 .Set(u => u.Username, updateDto.Username)
                 .Set(u => u.Bio, updateDto.Bio)
                 .Set(u => u.Interests, updateDto.Interests)
                 .Set(u => u.IsPrivate, updateDto.IsPrivate);
 
+            // Handle both ObjectId and string user IDs
             var result = await _users.UpdateOneAsync(u => u.Id == userId, update);
+            if (result.MatchedCount == 0)
+            {
+                // Try to find by username if ID lookup fails
+                result = await _users.UpdateOneAsync(u => u.Username == userId, update);
+            }
             if (result.MatchedCount == 0)
                 throw new KeyNotFoundException("User not found");
 
@@ -73,6 +113,16 @@ namespace WishlistApp.Services
 
         public async Task<string> UpdateAvatarAsync(string userId, IFormFile file)
         {
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(userId, "userId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
             if (file == null || file.Length == 0)
                 throw new ArgumentException("No file uploaded");
 
@@ -87,18 +137,43 @@ namespace WishlistApp.Services
             var avatarUrl = uploadResult.SecureUrl.ToString();
 
             var update = Builders<User>.Update.Set(u => u.AvatarUrl, avatarUrl);
-            await _users.UpdateOneAsync(u => u.Id == userId, update);
+            var result = await _users.UpdateOneAsync(u => u.Id == userId, update);
+            if (result.MatchedCount == 0)
+            {
+                // Try to find by username if ID lookup fails
+                await _users.UpdateOneAsync(u => u.Username == userId, update);
+            }
 
             return avatarUrl;
         }
 
         public async Task<bool> FollowUserAsync(string followerId, string followingId)
         {
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(followerId, "followerId");
+                ObjectIdValidator.ValidateObjectId(followingId, "followingId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
             if (followerId == followingId)
                 throw new InvalidOperationException("Cannot follow yourself");
 
-            var following = await _users.Find(u => u.Id == followingId).FirstOrDefaultAsync()
-                ?? throw new KeyNotFoundException("User to follow not found");
+            // Handle both ObjectId and string user IDs
+            var following = await _users.Find(u => u.Id == followingId).FirstOrDefaultAsync();
+            if (following == null)
+            {
+                // Try to find by username if ID lookup fails
+                following = await _users.Find(u => u.Username == followingId).FirstOrDefaultAsync();
+                if (following == null)
+                {
+                    throw new KeyNotFoundException("User to follow not found");
+                }
+            }
 
             var relationship = new Relationship
             {
@@ -132,6 +207,17 @@ namespace WishlistApp.Services
 
         public async Task<bool> UnfollowUserAsync(string followerId, string followingId)
         {
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(followerId, "followerId");
+                ObjectIdValidator.ValidateObjectId(followingId, "followingId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
             var result = await _relationships.DeleteOneAsync(r =>
                 r.FollowerId == followerId && r.FollowingId == followingId);
 
@@ -156,6 +242,16 @@ namespace WishlistApp.Services
 
         public async Task<List<UserSearchDTO>> SearchUsersAsync(string searchTerm, string currentUserId, int page = 1, int pageSize = 20)
         {
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(currentUserId, "currentUserId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
             var filter = Builders<User>.Filter.Regex(u => u.Username, new MongoDB.Bson.BsonRegularExpression(searchTerm, "i"));
             var users = await _users.Find(filter)
                 .Skip((page - 1) * pageSize)
@@ -177,8 +273,28 @@ namespace WishlistApp.Services
 
         public async Task<List<UserSearchDTO>> GetFollowersAsync(string userId, string currentUserId, int page = 1, int pageSize = 20)
         {
-            var user = await _users.Find(u => u.Id == userId).FirstOrDefaultAsync()
-                ?? throw new KeyNotFoundException("User not found");
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(userId, "userId");
+                ObjectIdValidator.ValidateObjectId(currentUserId, "currentUserId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
+            // Handle both ObjectId and string user IDs
+            var user = await _users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+            if (user == null)
+            {
+                // Try to find by username if ID lookup fails
+                user = await _users.Find(u => u.Username == userId).FirstOrDefaultAsync();
+                if (user == null)
+                {
+                    throw new KeyNotFoundException("User not found");
+                }
+            }
 
             var followers = await _users.Find(u => user.FollowerIds.Contains(u.Id))
                 .Skip((page - 1) * pageSize)
@@ -200,8 +316,28 @@ namespace WishlistApp.Services
 
         public async Task<List<UserSearchDTO>> GetFollowingAsync(string userId, string currentUserId, int page = 1, int pageSize = 20)
         {
-            var user = await _users.Find(u => u.Id == userId).FirstOrDefaultAsync()
-                ?? throw new KeyNotFoundException("User not found");
+            try
+            {
+                ObjectIdValidator.ValidateObjectId(userId, "userId");
+                ObjectIdValidator.ValidateObjectId(currentUserId, "currentUserId");
+            }
+            catch (ArgumentException ex)
+            {
+                Console.WriteLine($"User ID validation failed: {ex.Message}");
+                throw;
+            }
+            
+            // Handle both ObjectId and string user IDs
+            var user = await _users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+            if (user == null)
+            {
+                // Try to find by username if ID lookup fails
+                user = await _users.Find(u => u.Username == userId).FirstOrDefaultAsync();
+                if (user == null)
+                {
+                    throw new KeyNotFoundException("User not found");
+                }
+            }
 
             var following = await _users.Find(u => user.FollowingIds.Contains(u.Id))
                 .Skip((page - 1) * pageSize)

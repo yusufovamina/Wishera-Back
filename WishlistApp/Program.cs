@@ -108,7 +108,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// In dev we run HTTP locally; disable HTTPS redirection to avoid port mismatch
+// app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 
 app.UseAuthentication();

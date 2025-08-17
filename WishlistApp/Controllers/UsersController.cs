@@ -18,7 +18,12 @@ namespace WishlistApp.Controllers
             _userService = userService;
         }
 
-        private string GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        private string GetCurrentUserId()
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            Console.WriteLine($"Extracted UserId from JWT: '{userId}'");
+            return userId;
+        }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<UserProfileDTO>> GetUserProfile(string id)
@@ -31,6 +36,10 @@ namespace WishlistApp.Controllers
             catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "User not found" });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -45,6 +54,10 @@ namespace WishlistApp.Controllers
             catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "User not found" });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -78,6 +91,10 @@ namespace WishlistApp.Controllers
             {
                 return NotFound(new { message = "User not found" });
             }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpDelete("unfollow/{id}")]
@@ -92,6 +109,10 @@ namespace WishlistApp.Controllers
             {
                 return NotFound(new { message = "User not found" });
             }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("search")]
@@ -100,8 +121,15 @@ namespace WishlistApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var users = await _userService.SearchUsersAsync(query, GetCurrentUserId(), page, pageSize);
-            return Ok(users);
+            try
+            {
+                var users = await _userService.SearchUsersAsync(query, GetCurrentUserId(), page, pageSize);
+                return Ok(users);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("{id}/followers")]
@@ -119,6 +147,10 @@ namespace WishlistApp.Controllers
             {
                 return NotFound(new { message = "User not found" });
             }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("{id}/following")]
@@ -135,6 +167,10 @@ namespace WishlistApp.Controllers
             catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "User not found" });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
         }
     }

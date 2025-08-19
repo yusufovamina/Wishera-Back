@@ -1,0 +1,40 @@
+@ChatService_HostAddress = http://localhost:5000
+
+GET {{ChatService_HostAddress}}/health
+Accept: application/json
+
+###
+POST {{ChatService_HostAddress}}/api/chat/token
+Content-Type: application/json
+
+{
+  "userId": "alice",
+  "expiresInMinutes": 60
+}
+
+###
+POST {{ChatService_HostAddress}}/api/chat/channel
+Content-Type: application/json
+
+{
+  "channelType": "messaging",
+  "channelId": "", // Optional: leave empty or omit to auto-generate
+  "createdByUserId": "alice",
+  "memberIds": ["alice", "bob"],
+  "customData": {
+    "topic": "wishlist"
+  }
+}
+
+###
+POST {{ChatService_HostAddress}}/api/chat/message
+Content-Type: application/json
+
+{
+  "channelType": "messaging",
+  "channelId": "room-1",
+  "senderUserId": "alice",
+  "text": "Hello, Stream!"
+}
+
+###

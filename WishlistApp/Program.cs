@@ -51,6 +51,9 @@ builder.Services.AddScoped<IWishlistService, WishlistService>();
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// Register Chat Integration Service
+builder.Services.AddHttpClient<IChatIntegrationService, ChatIntegrationService>();
+
 // Configure Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

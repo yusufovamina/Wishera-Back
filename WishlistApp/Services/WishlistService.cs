@@ -48,8 +48,8 @@ namespace WishlistApp.Services
             {
                 UserId = userId,
                 Title = createDto.Title,
-                Description = createDto.Description,
-                Category = createDto.Category,
+                Description = createDto.Description ?? string.Empty,
+                Category = createDto.Category ?? string.Empty,
                 IsPublic = createDto.IsPublic,
                 AllowedViewerIds = createDto.AllowedViewerIds ?? new List<string>(),
                 CreatedAt = DateTime.UtcNow,
@@ -189,7 +189,7 @@ namespace WishlistApp.Services
             {
                 Id = w.Id,
                 UserId = w.UserId,
-                Username = user.Username,
+                Username = user.Username!,
                 AvatarUrl = user.AvatarUrl,
                 Title = w.Title,
                 Description = w.Description,
@@ -240,9 +240,9 @@ namespace WishlistApp.Services
 
                     return new WishlistFeedDTO
                     {
-                        Id = f.WishlistId,
+                        Id = f.WishlistId!,
                         UserId = f.UserId,
-                        Username = user?.Username,
+                        Username = user?.Username ?? "Unknown User",
                         AvatarUrl = user?.AvatarUrl,
                         Title = f.WishlistTitle,
                         Description = wishlist?.Description,
@@ -250,7 +250,7 @@ namespace WishlistApp.Services
                         CreatedAt = f.CreatedAt,
                         LikeCount = wishlist?.LikeCount ?? 0,
                         CommentCount = wishlist?.CommentCount ?? 0,
-                        IsLiked = likedWishlistIds.Contains(f.WishlistId)
+                        IsLiked = likedWishlistIds.Contains(f.WishlistId!)
                     };
                 })
                 .ToList();
@@ -411,8 +411,8 @@ namespace WishlistApp.Services
             {
                 Id = comment.Id,
                 UserId = userId,
-                Username = user?.Username,
-                AvatarUrl = user?.AvatarUrl,
+                Username = user?.Username ?? "Unknown",
+                AvatarUrl = user?.AvatarUrl ?? string.Empty,
                 WishlistId = comment.WishlistId,
                 Text = commentDto.Text,
                 CreatedAt = comment.CreatedAt,
@@ -467,8 +467,8 @@ namespace WishlistApp.Services
                 {
                     Id = c.Id,
                     UserId = c.UserId,
-                    Username = user?.Username,
-                    AvatarUrl = user?.AvatarUrl,
+                    Username = user?.Username ?? "Unknown",
+                    AvatarUrl = user?.AvatarUrl ?? string.Empty,
                     WishlistId = c.WishlistId,
                     Text = c.Text,
                     CreatedAt = c.CreatedAt,

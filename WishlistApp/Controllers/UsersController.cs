@@ -18,7 +18,7 @@ namespace WishlistApp.Controllers
             _userService = userService;
         }
 
-        private string GetCurrentUserId()
+        private string? GetCurrentUserId()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             Console.WriteLine($"Extracted UserId from JWT: '{userId}'");
@@ -28,9 +28,14 @@ namespace WishlistApp.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<UserProfileDTO>> GetUserProfile(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var profile = await _userService.GetUserProfileAsync(id, GetCurrentUserId());
+                var profile = await _userService.GetUserProfileAsync(id, currentUserId);
                 return Ok(profile);
             }
             catch (KeyNotFoundException)
@@ -46,9 +51,14 @@ namespace WishlistApp.Controllers
         [HttpPut("profile")]
         public async Task<ActionResult<UserProfileDTO>> UpdateProfile(UpdateUserProfileDTO updateDto)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var profile = await _userService.UpdateUserProfileAsync(GetCurrentUserId(), updateDto);
+                var profile = await _userService.UpdateUserProfileAsync(currentUserId, updateDto);
                 return Ok(profile);
             }
             catch (KeyNotFoundException)
@@ -64,9 +74,14 @@ namespace WishlistApp.Controllers
         [HttpPost("avatar")]
         public async Task<ActionResult<string>> UpdateAvatar(IFormFile file)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var avatarUrl = await _userService.UpdateAvatarAsync(GetCurrentUserId(), file);
+                var avatarUrl = await _userService.UpdateAvatarAsync(currentUserId, file);
                 return Ok(new { avatarUrl });
             }
             catch (ArgumentException ex)
@@ -78,9 +93,14 @@ namespace WishlistApp.Controllers
         [HttpPost("follow/{id}")]
         public async Task<ActionResult<bool>> FollowUser(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var result = await _userService.FollowUserAsync(GetCurrentUserId(), id);
+                var result = await _userService.FollowUserAsync(currentUserId, id);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -100,9 +120,14 @@ namespace WishlistApp.Controllers
         [HttpDelete("unfollow/{id}")]
         public async Task<ActionResult<bool>> UnfollowUser(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var result = await _userService.UnfollowUserAsync(GetCurrentUserId(), id);
+                var result = await _userService.UnfollowUserAsync(currentUserId, id);
                 return Ok(result);
             }
             catch (KeyNotFoundException)
@@ -121,9 +146,14 @@ namespace WishlistApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var users = await _userService.SearchUsersAsync(query, GetCurrentUserId(), page, pageSize);
+                var users = await _userService.SearchUsersAsync(query, currentUserId, page, pageSize);
                 return Ok(users);
             }
             catch (ArgumentException ex)
@@ -138,9 +168,14 @@ namespace WishlistApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var followers = await _userService.GetFollowersAsync(id, GetCurrentUserId(), page, pageSize);
+                var followers = await _userService.GetFollowersAsync(id, currentUserId, page, pageSize);
                 return Ok(followers);
             }
             catch (KeyNotFoundException)
@@ -159,9 +194,14 @@ namespace WishlistApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var following = await _userService.GetFollowingAsync(id, GetCurrentUserId(), page, pageSize);
+                var following = await _userService.GetFollowingAsync(id, currentUserId, page, pageSize);
                 return Ok(following);
             }
             catch (KeyNotFoundException)

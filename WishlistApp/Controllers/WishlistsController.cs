@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using WishlistApp.DTO;
 using WishlistApp.Services;
+using System.Collections.Generic;
 
 namespace WishlistApp.Controllers
 {
@@ -18,14 +19,19 @@ namespace WishlistApp.Controllers
             _wishlistService = wishlistService;
         }
 
-        private string GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         [HttpPost]
         public async Task<ActionResult<WishlistResponseDTO>> CreateWishlist(CreateWishlistDTO createDto)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var wishlist = await _wishlistService.CreateWishlistAsync(GetCurrentUserId(), createDto);
+                var wishlist = await _wishlistService.CreateWishlistAsync(currentUserId, createDto);
                 return CreatedAtAction(nameof(GetWishlist), new { id = wishlist.Id }, wishlist);
             }
             catch (Exception ex)
@@ -37,9 +43,14 @@ namespace WishlistApp.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<WishlistResponseDTO>> GetWishlist(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var wishlist = await _wishlistService.GetWishlistAsync(id, GetCurrentUserId());
+                var wishlist = await _wishlistService.GetWishlistAsync(id, currentUserId);
                 return Ok(wishlist);
             }
             catch (KeyNotFoundException)
@@ -55,9 +66,14 @@ namespace WishlistApp.Controllers
         [HttpPut("{id}")]
         public async Task<ActionResult<WishlistResponseDTO>> UpdateWishlist(string id, UpdateWishlistDTO updateDto)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var wishlist = await _wishlistService.UpdateWishlistAsync(id, GetCurrentUserId(), updateDto);
+                var wishlist = await _wishlistService.UpdateWishlistAsync(id, currentUserId, updateDto);
                 return Ok(wishlist);
             }
             catch (KeyNotFoundException)
@@ -73,9 +89,14 @@ namespace WishlistApp.Controllers
         [HttpDelete("{id}")]
         public async Task<ActionResult> DeleteWishlist(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var result = await _wishlistService.DeleteWishlistAsync(id, GetCurrentUserId());
+                var result = await _wishlistService.DeleteWishlistAsync(id, currentUserId);
                 if (result)
                     return NoContent();
                 return NotFound(new { message = "Wishlist not found" });
@@ -92,9 +113,14 @@ namespace WishlistApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var wishlists = await _wishlistService.GetUserWishlistsAsync(userId, GetCurrentUserId(), page, pageSize);
+                var wishlists = await _wishlistService.GetUserWishlistsAsync(userId, currentUserId, page, pageSize);
                 return Ok(wishlists);
             }
             catch (KeyNotFoundException)
@@ -108,7 +134,12 @@ namespace WishlistApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var feed = await _wishlistService.GetFeedAsync(GetCurrentUserId(), page, pageSize);
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
+            var feed = await _wishlistService.GetFeedAsync(currentUserId, page, pageSize);
             return Ok(feed);
         }
 
@@ -129,9 +160,14 @@ namespace WishlistApp.Controllers
         [HttpPost("{id}/like")]
         public async Task<ActionResult<bool>> LikeWishlist(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var result = await _wishlistService.LikeWishlistAsync(id, GetCurrentUserId());
+                var result = await _wishlistService.LikeWishlistAsync(id, currentUserId);
                 return Ok(result);
             }
             catch (KeyNotFoundException)
@@ -147,9 +183,14 @@ namespace WishlistApp.Controllers
         [HttpDelete("{id}/unlike")]
         public async Task<ActionResult<bool>> UnlikeWishlist(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var result = await _wishlistService.UnlikeWishlistAsync(id, GetCurrentUserId());
+                var result = await _wishlistService.UnlikeWishlistAsync(id, currentUserId);
                 return Ok(result);
             }
             catch (KeyNotFoundException)
@@ -161,9 +202,14 @@ namespace WishlistApp.Controllers
         [HttpPost("{id}/comments")]
         public async Task<ActionResult<CommentDTO>> AddComment(string id, CreateCommentDTO commentDto)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var comment = await _wishlistService.AddCommentAsync(id, GetCurrentUserId(), commentDto);
+                var comment = await _wishlistService.AddCommentAsync(id, currentUserId, commentDto);
                 return Ok(comment);
             }
             catch (KeyNotFoundException)
@@ -179,9 +225,14 @@ namespace WishlistApp.Controllers
         [HttpPut("comments/{id}")]
         public async Task<ActionResult<CommentDTO>> UpdateComment(string id, UpdateCommentDTO commentDto)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var comment = await _wishlistService.UpdateCommentAsync(id, GetCurrentUserId(), commentDto);
+                var comment = await _wishlistService.UpdateCommentAsync(id, currentUserId, commentDto);
                 return Ok(comment);
             }
             catch (KeyNotFoundException)
@@ -197,9 +248,14 @@ namespace WishlistApp.Controllers
         [HttpDelete("comments/{id}")]
         public async Task<ActionResult> DeleteComment(string id)
         {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
             try
             {
-                var result = await _wishlistService.DeleteCommentAsync(id, GetCurrentUserId());
+                var result = await _wishlistService.DeleteCommentAsync(id, currentUserId);
                 if (result)
                     return NoContent();
                 return NotFound(new { message = "Comment not found" });

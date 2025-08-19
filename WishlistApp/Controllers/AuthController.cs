@@ -17,10 +17,12 @@ namespace WishlistApp.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly IChatIntegrationService _chatIntegrationService;
 
-        public AuthController(IAuthService authService)
+        public AuthController(IAuthService authService, IChatIntegrationService chatIntegrationService)
         {
             _authService = authService;
+            _chatIntegrationService = chatIntegrationService;
         }
 
         [HttpPost("register")]
@@ -29,6 +31,8 @@ namespace WishlistApp.Controllers
             try
             {
                 var response = await _authService.RegisterAsync(registerDto);
+                // Register user with chat service on successful registration
+                await _chatIntegrationService.UpsertUserAsync(response.UserId);
                 return Ok(response);
             }
             catch (InvalidOperationException ex)
@@ -43,6 +47,9 @@ namespace WishlistApp.Controllers
             try
             {
                 var response = await _authService.LoginAsync(loginDto);
+                // Get chat token on successful login
+                var chatToken = await _chatIntegrationService.GetUserTokenAsync(response.UserId);
+                response.ChatToken = chatToken; // Assuming AuthResponseDTO has a ChatToken property
                 return Ok(response);
             }
             catch (InvalidOperationException ex)

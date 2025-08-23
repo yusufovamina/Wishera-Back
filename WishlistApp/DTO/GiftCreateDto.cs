@@ -10,4 +10,9 @@ namespace WishlistApp.DTO
         public required string WishlistId { get; set; }
         public required IFormFile ImageFile { get; set; } // Файл изображения
     }
+
+    public class AssignGiftToWishlistDto
+    {
+        public required string WishlistId { get; set; }
+    }
 } 

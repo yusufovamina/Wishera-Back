@@ -8,6 +8,7 @@ using WishlistApp.DTO;
 using System.Security.Claims;
 using WishlistApp.Services;
 using MongoDB.Driver;
+using MongoDB.Bson;
 
 namespace WishlistApp.Controllers
 {
@@ -21,28 +22,45 @@ namespace WishlistApp.Controllers
 
         public GiftController(MongoDbContext context, ICloudinaryService cloudinaryService)
         {
+            Console.WriteLine("=== GiftController instantiated ===");
             _context = context;
             _cloudinaryService = cloudinaryService;
         }
 
+        private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
         [HttpPost]
         [Consumes("multipart/form-data")]
-        public async Task<IActionResult> CreateGift([FromForm] string name, [FromForm] decimal price, [FromForm] string category, IFormFile imageFile)
+        public async Task<IActionResult> CreateGift([FromForm] string name, [FromForm] decimal price, [FromForm] string category, [FromForm] string? wishlistId = null, IFormFile? imageFile = null)
         {
-            var userId = User.FindFirst(ClaimTypes.Name)?.Value;
+            Console.WriteLine("=== CreateGift endpoint called ===");
+            var userId = GetCurrentUserId();
+            Console.WriteLine($"CreateGift called - Name: {name}, Price: {price}, Category: {category}, WishlistId: {wishlistId ?? "null"}, UserId: {userId}");
+            
             if (string.IsNullOrEmpty(userId))
             {
                 return Unauthorized(new { message = "User not authenticated" });
             }
 
+            // If wishlistId is provided, validate that it exists and belongs to the user
+            if (!string.IsNullOrEmpty(wishlistId))
+            {
+                var wishlist = await _context.Wishlists.Find(w => w.Id == wishlistId && w.UserId == userId).FirstOrDefaultAsync();
+                if (wishlist == null)
+                {
+                    return BadRequest(new { message = "Wishlist not found or you don't have permission to add gifts to it" });
+                }
+            }
+
             var gift = new Gift
             {
-                Id = Guid.NewGuid().ToString(),
+                Id = ObjectId.GenerateNewId().ToString(),
                 Name = name,
                 Price = price,
                 Category = category,
-                WishlistId = userId // ✅ Set WishlistId to match UserId
+                WishlistId = wishlistId // This can be null now
             };
+            Console.WriteLine($"Gift created with WishlistId: {gift.WishlistId ?? "null"}");
 
             if (imageFile != null)
             {
@@ -91,7 +109,7 @@ namespace WishlistApp.Controllers
         [HttpPost("{id}/reserve")]
         public async Task<IActionResult> ReserveGift(string id)
         {
-            var userId = User.FindFirst(ClaimTypes.Name)?.Value;
+            var userId = GetCurrentUserId();
             var username = User.FindFirst(ClaimTypes.GivenName)?.Value; // ✅ Fetch username
 
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(username))
@@ -114,7 +132,7 @@ namespace WishlistApp.Controllers
         [HttpGet("reserved")]
         public async Task<IActionResult> GetReservedGifts()
         {
-            var userId = User.FindFirst(ClaimTypes.Name)?.Value;
+            var userId = GetCurrentUserId();
             var reservedGifts = await _context.Gifts.Find(g => g.ReservedByUserId == userId).ToListAsync();
 
             return Ok(reservedGifts);
@@ -123,7 +141,7 @@ namespace WishlistApp.Controllers
         [HttpPost("{id}/cancel-reserve")]
         public async Task<IActionResult> CancelReservation(string id)
         {
-            var userId = User.FindFirst(ClaimTypes.Name)?.Value;
+            var userId = GetCurrentUserId();
             var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
 
             if (gift == null) return NotFound(new { message = "Gift not found" });
@@ -143,8 +161,17 @@ namespace WishlistApp.Controllers
             [FromQuery] string? category = null,
             [FromQuery] string? sortBy = null)
         {
-            var userId = User.FindFirst(ClaimTypes.Name)?.Value;
-            var filter = Builders<Gift>.Filter.Eq(g => g.WishlistId, userId);
+            var userId = GetCurrentUserId();
+            
+            // First, get all wishlists belonging to the user
+            var userWishlists = await _context.Wishlists.Find(w => w.UserId == userId).ToListAsync();
+            var wishlistIds = userWishlists.Select(w => w.Id).ToList();
+            
+            // Find all gifts that belong to any of the user's wishlists OR are unassigned (no wishlist)
+            var filter = Builders<Gift>.Filter.Or(
+                Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds),
+                Builders<Gift>.Filter.Eq(g => g.WishlistId, (string)null)
+            );
 
             if (!string.IsNullOrEmpty(category))
             {
@@ -207,6 +234,119 @@ namespace WishlistApp.Controllers
 
             await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
             return Ok(new { ImageUrl = imageUrl });
+        }
+
+        [HttpPost("{id}/assign-to-wishlist")]
+        public async Task<IActionResult> AssignGiftToWishlist(string id, [FromBody] AssignGiftToWishlistDto assignDto)
+        {
+            var userId = GetCurrentUserId();
+            Console.WriteLine($"AssignGiftToWishlist called - GiftId: {id}, WishlistId: {assignDto.WishlistId}, UserId: {userId}");
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                Console.WriteLine("User not authenticated");
+                return Unauthorized(new { message = "User not authenticated" });
+            }
+
+            // Find the gift
+            var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
+            if (gift == null)
+            {
+                Console.WriteLine($"Gift not found: {id}");
+                return NotFound(new { message = "Gift not found" });
+            }
+            Console.WriteLine($"Gift found: {gift.Name}, WishlistId: {gift.WishlistId}");
+
+            // Verify the gift belongs to the current user
+            // If the gift has a wishlist, check if it belongs to the user
+            // If the gift has no wishlist (unassigned), it belongs to the user
+            if (!string.IsNullOrEmpty(gift.WishlistId))
+            {
+                var userWishlists = await _context.Wishlists.Find(w => w.UserId == userId).ToListAsync();
+                var userWishlistIds = userWishlists.Select(w => w.Id).ToList();
+                Console.WriteLine($"User wishlists: {string.Join(", ", userWishlistIds)}");
+                Console.WriteLine($"Gift wishlist: {gift.WishlistId}");
+                
+                if (!userWishlistIds.Contains(gift.WishlistId))
+                {
+                    Console.WriteLine("User doesn't have permission to modify this gift");
+                    return Unauthorized(new { message = "You don't have permission to modify this gift" });
+                }
+            }
+            else
+            {
+                Console.WriteLine("Gift is unassigned - user can modify it");
+            }
+
+            // Verify the target wishlist exists and belongs to the current user
+            var targetWishlist = await _context.Wishlists.Find(w => w.Id == assignDto.WishlistId).FirstOrDefaultAsync();
+            if (targetWishlist == null)
+            {
+                Console.WriteLine($"Target wishlist not found: {assignDto.WishlistId}");
+                return NotFound(new { message = "Target wishlist not found" });
+            }
+            Console.WriteLine($"Target wishlist found: {targetWishlist.Title}, Owner: {targetWishlist.UserId}");
+
+            if (targetWishlist.UserId != userId)
+            {
+                Console.WriteLine("User doesn't have permission to add gifts to this wishlist");
+                return Unauthorized(new { message = "You don't have permission to add gifts to this wishlist" });
+            }
+
+            // Update the gift's wishlist
+            gift.WishlistId = assignDto.WishlistId;
+            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
+            Console.WriteLine($"Gift {gift.Name} successfully assigned to wishlist {assignDto.WishlistId}");
+
+            return Ok(new { message = "Gift assigned to wishlist successfully" });
+        }
+
+        [HttpPost("{id}/remove-from-wishlist")]
+        public async Task<IActionResult> RemoveGiftFromWishlist(string id)
+        {
+            var userId = GetCurrentUserId();
+            Console.WriteLine($"RemoveGiftFromWishlist called - GiftId: {id}, UserId: {userId}");
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                Console.WriteLine("User not authenticated");
+                return Unauthorized(new { message = "User not authenticated" });
+            }
+
+            // Find the gift
+            var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
+            if (gift == null)
+            {
+                Console.WriteLine($"Gift not found: {id}");
+                return NotFound(new { message = "Gift not found" });
+            }
+            Console.WriteLine($"Gift found: {gift.Name}, WishlistId: {gift.WishlistId}");
+
+            // Verify the gift belongs to the current user
+            if (!string.IsNullOrEmpty(gift.WishlistId))
+            {
+                var userWishlists = await _context.Wishlists.Find(w => w.UserId == userId).ToListAsync();
+                var userWishlistIds = userWishlists.Select(w => w.Id).ToList();
+                Console.WriteLine($"User wishlists: {string.Join(", ", userWishlistIds)}");
+                Console.WriteLine($"Gift wishlist: {gift.WishlistId}");
+                
+                if (!userWishlistIds.Contains(gift.WishlistId))
+                {
+                    Console.WriteLine("User doesn't have permission to modify this gift");
+                    return Unauthorized(new { message = "You don't have permission to modify this gift" });
+                }
+            }
+            else
+            {
+                Console.WriteLine("Gift is unassigned - user can modify it");
+            }
+
+            // Remove the gift from the wishlist by setting WishlistId to null
+            gift.WishlistId = null;
+            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
+            Console.WriteLine($"Gift {gift.Name} successfully removed from wishlist");
+
+            return Ok(new { message = "Gift removed from wishlist successfully" });
         }
     }
 }

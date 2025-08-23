@@ -30,6 +30,7 @@ namespace WishlistApp.Services
         private readonly IMongoCollection<Like> _likes;
         private readonly IMongoCollection<Comment> _comments;
         private readonly IMongoCollection<FeedEvent> _feed;
+        private readonly IMongoCollection<Gift> _gifts;
         private readonly Cloudinary _cloudinary;
 
         public WishlistService(IMongoDatabase database, Cloudinary cloudinary)
@@ -39,6 +40,7 @@ namespace WishlistApp.Services
             _likes = database.GetCollection<Like>("Likes");
             _comments = database.GetCollection<Comment>("Comments");
             _feed = database.GetCollection<FeedEvent>("Feed");
+            _gifts = database.GetCollection<Gift>("Gifts");
             _cloudinary = cloudinary;
         }
 
@@ -90,24 +92,46 @@ namespace WishlistApp.Services
 
             var isLiked = await _likes.Find(l => l.UserId == currentUserId && l.WishlistId == wishlistId).AnyAsync();
 
+            // Get gifts that belong to this wishlist (exclude unassigned gifts)
+            var gifts = await _gifts.Find(g => g.WishlistId == wishlistId && g.WishlistId != null).ToListAsync();
+            
+            // Combine embedded items with gifts
+            var allItems = new List<WishlistItemDTO>();
+            
+            // Add embedded wishlist items
+            allItems.AddRange(wishlist.Items.Select(i => new WishlistItemDTO
+            {
+                Title = i.Title,
+                Description = i.Description,
+                ImageUrl = i.ImageUrl,
+                Category = i.Category,
+                Price = i.Price,
+                Url = i.Url
+            }));
+            
+            // Add gifts from the Gift collection
+            allItems.AddRange(gifts.Select(g => new WishlistItemDTO
+            {
+                Title = g.Name,
+                Description = null,
+                ImageUrl = g.ImageUrl,
+                Category = g.Category,
+                Price = g.Price,
+                Url = null,
+                GiftId = g.Id // Add the gift ID so we can remove it
+            }));
+
             return new WishlistResponseDTO
             {
                 Id = wishlist.Id,
                 UserId = wishlist.UserId,
                 Username = user.Username ?? throw new InvalidOperationException("Username cannot be null"),
+                AvatarUrl = user.AvatarUrl,
                 Title = wishlist.Title,
                 Description = wishlist.Description,
                 Category = wishlist.Category,
                 IsPublic = wishlist.IsPublic,
-                Items = wishlist.Items.Select(i => new WishlistItemDTO
-                {
-                    Title = i.Title,
-                    Description = i.Description,
-                    ImageUrl = i.ImageUrl,
-                    Category = i.Category,
-                    Price = i.Price,
-                    Url = i.Url
-                }).ToList(),
+                Items = allItems,
                 CreatedAt = wishlist.CreatedAt,
                 UpdatedAt = wishlist.UpdatedAt,
                 LikeCount = wishlist.LikeCount,
@@ -119,11 +143,14 @@ namespace WishlistApp.Services
 
         public async Task<WishlistResponseDTO> UpdateWishlistAsync(string wishlistId, string userId, UpdateWishlistDTO updateDto)
         {
+            Console.WriteLine($"UpdateWishlistAsync called - WishlistId: {wishlistId}, UserId: {userId}");
+            Console.WriteLine($"Update data - Title: {updateDto.Title}, Description: {updateDto.Description}, Category: {updateDto.Category}, IsPublic: {updateDto.IsPublic}");
+            
             var wishlist = await _wishlists.Find(w => w.Id == wishlistId).FirstOrDefaultAsync()
                 ?? throw new KeyNotFoundException("Wishlist not found");
 
             if (wishlist.UserId != userId)
-                throw new UnauthorizedAccessException("You don't have permission to update this wishlist");
+                throw new UnauthorizedAccessException();
 
             var update = Builders<Wishlist>.Update
                 .Set(w => w.Title, updateDto.Title)
@@ -133,7 +160,17 @@ namespace WishlistApp.Services
                 .Set(w => w.AllowedViewerIds, updateDto.AllowedViewerIds)
                 .Set(w => w.UpdatedAt, DateTime.UtcNow);
 
+            Console.WriteLine($"Executing MongoDB update for wishlist {wishlistId}");
             await _wishlists.UpdateOneAsync(w => w.Id == wishlistId, update);
+            Console.WriteLine($"MongoDB update completed for wishlist {wishlistId}");
+
+            // Update corresponding feed events to reflect the new title
+            if (!string.IsNullOrEmpty(updateDto.Title))
+            {
+                var feedUpdate = Builders<FeedEvent>.Update.Set(f => f.WishlistTitle, updateDto.Title);
+                await _feed.UpdateManyAsync(f => f.WishlistId == wishlistId, feedUpdate);
+                Console.WriteLine($"Updated feed events for wishlist {wishlistId} with new title: {updateDto.Title}");
+            }
 
             return await GetWishlistAsync(wishlistId, userId);
         }
@@ -144,7 +181,7 @@ namespace WishlistApp.Services
                 ?? throw new KeyNotFoundException("Wishlist not found");
 
             if (wishlist.UserId != userId)
-                throw new UnauthorizedAccessException("You don't have permission to delete this wishlist");
+                throw new UnauthorizedAccessException();
 
             // Delete associated likes and comments
             await Task.WhenAll(
@@ -194,6 +231,7 @@ namespace WishlistApp.Services
                 Title = w.Title,
                 Description = w.Description,
                 Category = w.Category,
+                IsPublic = w.IsPublic,
                 CreatedAt = w.CreatedAt,
                 LikeCount = w.LikeCount,
                 CommentCount = w.CommentCount,
@@ -247,6 +285,7 @@ namespace WishlistApp.Services
                         Title = f.WishlistTitle,
                         Description = wishlist?.Description,
                         Category = wishlist?.Category,
+                        IsPublic = wishlist?.IsPublic ?? true,
                         CreatedAt = f.CreatedAt,
                         LikeCount = wishlist?.LikeCount ?? 0,
                         CommentCount = wishlist?.CommentCount ?? 0,

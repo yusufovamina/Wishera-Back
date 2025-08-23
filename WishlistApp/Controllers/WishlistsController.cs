@@ -59,7 +59,7 @@ namespace WishlistApp.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
         }
 
@@ -71,9 +71,14 @@ namespace WishlistApp.Controllers
             {
                 return Unauthorized(new { message = "User not authenticated" });
             }
+            
+            Console.WriteLine($"UpdateWishlist called - ID: {id}, User: {currentUserId}");
+            Console.WriteLine($"Update data - Title: {updateDto.Title}, Description: {updateDto.Description}, Category: {updateDto.Category}, IsPublic: {updateDto.IsPublic}");
+            
             try
             {
                 var wishlist = await _wishlistService.UpdateWishlistAsync(id, currentUserId, updateDto);
+                Console.WriteLine($"Update successful - New title: {wishlist.Title}, Category: {wishlist.Category}, IsPublic: {wishlist.IsPublic}");
                 return Ok(wishlist);
             }
             catch (KeyNotFoundException)
@@ -82,7 +87,7 @@ namespace WishlistApp.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
         }
 
@@ -103,7 +108,7 @@ namespace WishlistApp.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
         }
 
@@ -127,6 +132,12 @@ namespace WishlistApp.Controllers
             {
                 return NotFound(new { message = "User not found" });
             }
+        }
+
+        [HttpGet("categories")]
+        public ActionResult<string[]> GetCategories()
+        {
+            return Ok(WishlistCategories.Categories);
         }
 
         [HttpGet("feed")]
@@ -176,7 +187,7 @@ namespace WishlistApp.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
         }
 
@@ -218,7 +229,7 @@ namespace WishlistApp.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
         }
 
@@ -241,7 +252,7 @@ namespace WishlistApp.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
         }
 
@@ -262,7 +273,7 @@ namespace WishlistApp.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return Forbid();
             }
         }
 

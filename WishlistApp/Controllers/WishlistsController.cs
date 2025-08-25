@@ -12,11 +12,11 @@ namespace WishlistApp.Controllers
     [Route("api/[controller]")]
     public class WishlistsController : ControllerBase
     {
-        private readonly IWishlistService _wishlistService;
+        private readonly IGiftWishlistServiceClient _giftWishlistServiceClient;
 
-        public WishlistsController(IWishlistService wishlistService)
+        public WishlistsController(IGiftWishlistServiceClient giftWishlistServiceClient)
         {
-            _wishlistService = wishlistService;
+            _giftWishlistServiceClient = giftWishlistServiceClient;
         }
 
         private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -31,7 +31,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var wishlist = await _wishlistService.CreateWishlistAsync(currentUserId, createDto);
+                var wishlist = await _giftWishlistServiceClient.CreateWishlistAsync(currentUserId, createDto);
                 return CreatedAtAction(nameof(GetWishlist), new { id = wishlist.Id }, wishlist);
             }
             catch (Exception ex)
@@ -50,7 +50,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var wishlist = await _wishlistService.GetWishlistAsync(id, currentUserId);
+                var wishlist = await _giftWishlistServiceClient.GetWishlistAsync(id, currentUserId);
                 return Ok(wishlist);
             }
             catch (KeyNotFoundException)
@@ -77,7 +77,7 @@ namespace WishlistApp.Controllers
             
             try
             {
-                var wishlist = await _wishlistService.UpdateWishlistAsync(id, currentUserId, updateDto);
+                var wishlist = await _giftWishlistServiceClient.UpdateWishlistAsync(id, currentUserId, updateDto);
                 Console.WriteLine($"Update successful - New title: {wishlist.Title}, Category: {wishlist.Category}, IsPublic: {wishlist.IsPublic}");
                 return Ok(wishlist);
             }
@@ -101,7 +101,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var result = await _wishlistService.DeleteWishlistAsync(id, currentUserId);
+                var result = await _giftWishlistServiceClient.DeleteWishlistAsync(id, currentUserId);
                 if (result)
                     return NoContent();
                 return NotFound(new { message = "Wishlist not found" });
@@ -125,7 +125,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var wishlists = await _wishlistService.GetUserWishlistsAsync(userId, currentUserId, page, pageSize);
+                var wishlists = await _giftWishlistServiceClient.GetUserWishlistsAsync(userId, currentUserId, page, pageSize);
                 return Ok(wishlists);
             }
             catch (KeyNotFoundException)
@@ -137,7 +137,7 @@ namespace WishlistApp.Controllers
         [HttpGet("categories")]
         public ActionResult<string[]> GetCategories()
         {
-            return Ok(WishlistCategories.Categories);
+            return Ok(_giftWishlistServiceClient.GetCategories());
         }
 
         [HttpGet("feed")]
@@ -150,7 +150,7 @@ namespace WishlistApp.Controllers
             {
                 return Unauthorized(new { message = "User not authenticated" });
             }
-            var feed = await _wishlistService.GetFeedAsync(currentUserId, page, pageSize);
+            var feed = await _giftWishlistServiceClient.GetFeedAsync(currentUserId, page, pageSize);
             return Ok(feed);
         }
 
@@ -159,7 +159,7 @@ namespace WishlistApp.Controllers
         {
             try
             {
-                var imageUrl = await _wishlistService.UploadItemImageAsync(file);
+                var imageUrl = await _giftWishlistServiceClient.UploadItemImageAsync(file);
                 return Ok(new { imageUrl });
             }
             catch (ArgumentException ex)
@@ -178,7 +178,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var result = await _wishlistService.LikeWishlistAsync(id, currentUserId);
+                var result = await _giftWishlistServiceClient.LikeWishlistAsync(id, currentUserId);
                 return Ok(result);
             }
             catch (KeyNotFoundException)
@@ -201,7 +201,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var result = await _wishlistService.UnlikeWishlistAsync(id, currentUserId);
+                var result = await _giftWishlistServiceClient.UnlikeWishlistAsync(id, currentUserId);
                 return Ok(result);
             }
             catch (KeyNotFoundException)
@@ -220,7 +220,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var comment = await _wishlistService.AddCommentAsync(id, currentUserId, commentDto);
+                var comment = await _giftWishlistServiceClient.AddCommentAsync(id, currentUserId, commentDto);
                 return Ok(comment);
             }
             catch (KeyNotFoundException)
@@ -243,7 +243,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var comment = await _wishlistService.UpdateCommentAsync(id, currentUserId, commentDto);
+                var comment = await _giftWishlistServiceClient.UpdateCommentAsync(id, currentUserId, commentDto);
                 return Ok(comment);
             }
             catch (KeyNotFoundException)
@@ -266,7 +266,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var result = await _wishlistService.DeleteCommentAsync(id, currentUserId);
+                var result = await _giftWishlistServiceClient.DeleteCommentAsync(id, currentUserId);
                 if (result)
                     return NoContent();
                 return NotFound(new { message = "Comment not found" });
@@ -285,7 +285,7 @@ namespace WishlistApp.Controllers
         {
             try
             {
-                var comments = await _wishlistService.GetCommentsAsync(id, page, pageSize);
+                var comments = await _giftWishlistServiceClient.GetCommentsAsync(id, page, pageSize);
                 return Ok(comments);
             }
             catch (KeyNotFoundException)

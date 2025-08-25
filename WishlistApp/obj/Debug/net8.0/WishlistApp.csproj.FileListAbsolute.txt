@@ -359,3 +359,4 @@ C:\Users\Halil_mn06\WishlistWebApp\WishlistApp\obj\Debug\net8.0\refint\WishlistA
 C:\Users\Halil_mn06\WishlistWebApp\WishlistApp\obj\Debug\net8.0\WishlistApp.pdb
 C:\Users\Halil_mn06\WishlistWebApp\WishlistApp\obj\Debug\net8.0\WishlistApp.genruntimeconfig.cache
 C:\Users\Halil_mn06\WishlistWebApp\WishlistApp\obj\Debug\net8.0\ref\WishlistApp.dll
+C:\Users\yusufova_a\WishlistWebApp\WishlistApp\bin\Debug\net8.0\RabbitMQ.Client.dll

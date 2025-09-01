@@ -34,7 +34,7 @@ builder.Services
         };
     });
 
-// Register core auth logic from WishlistApp.Services (shared code)
+// Register core auth logic
 builder.Services.AddSingleton<IAuthService, AuthService>();
 builder.Services.AddSingleton<IEmailService, EmailService>();
 

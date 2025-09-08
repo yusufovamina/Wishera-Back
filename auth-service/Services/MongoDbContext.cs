@@ -1,11 +1,7 @@
 using MongoDB.Driver;
 using WishlistApp.Models;
 
-<<<<<<< HEAD
 namespace WishlistApp.Services
-=======
-namespace auth_service.Services
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
 {
     public class MongoDbContext
     {
@@ -17,19 +13,5 @@ namespace auth_service.Services
         }
 
         public IMongoCollection<User> Users => _database.GetCollection<User>("Users");
-<<<<<<< HEAD
     }
 }
-
-
-=======
-        // Other collections are not needed in auth-service directly
-        // public IMongoCollection<Wishlist> Wishlists => _database.GetCollection<Wishlist>("Wishlists");
-        // public IMongoCollection<Like> Likes => _database.GetCollection<Like>("Likes");
-        // public IMongoCollection<Comment> Comments => _database.GetCollection<Comment>("Comments");
-        // public IMongoCollection<FeedEvent> Feed => _database.GetCollection<FeedEvent>("Feed");
-        // public IMongoCollection<Relationship> Relationships => _database.GetCollection<Relationship>("Relationships");
-        // public IMongoCollection<Gift> Gifts => _database.GetCollection<Gift>("Gifts");
-    }
-}
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684

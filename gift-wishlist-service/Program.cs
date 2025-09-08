@@ -10,14 +10,11 @@ using WishlistApp.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-<<<<<<< HEAD
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     options.DocumentFilter<gift_wishlist_service.SwaggerFilters.IncludeOnlyWishlistAndGiftFilter>();
 });
-=======
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
 
 // Mongo
 var mongoClient = new MongoClient(builder.Configuration.GetConnectionString("MongoDB"));
@@ -51,30 +48,20 @@ builder.Services
         };
     });
 
-<<<<<<< HEAD
 // Register core services (match hosted service singleton lifetime)
 builder.Services.AddSingleton<WishlistApp.Services.IWishlistService, WishlistService>();
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
-=======
-// Register core services (local services)
-builder.Services.AddScoped<WishlistApp.Services.IWishlistService, WishlistService>();
-builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
 
 // RabbitMQ RPC server
 builder.Services.AddHostedService<GiftWishlistRpcServer>();
 
 var app = builder.Build();
 
-<<<<<<< HEAD
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-=======
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
 app.MapControllers();
 
 app.Run();

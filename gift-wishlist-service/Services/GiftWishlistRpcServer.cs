@@ -17,11 +17,8 @@ namespace gift_wishlist_service.Services
         private readonly gift_wishlist_service.Services.MongoDbContext _dbContext;
         private IConnection? _connection;
         private IModel? _channel;
-<<<<<<< HEAD
         private CancellationTokenSource? _cts;
         private Task? _runnerTask;
-=======
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
         private string _exchange = "giftwishlist.exchange";
         private string _queue = "giftwishlist.requests";
 
@@ -39,7 +36,6 @@ namespace gift_wishlist_service.Services
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-<<<<<<< HEAD
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var token = _cts.Token;
 
@@ -106,57 +102,6 @@ namespace gift_wishlist_service.Services
                     }
                 }
             }, token);
-=======
-            var factory = new ConnectionFactory
-            {
-                HostName = _configuration["RabbitMq:HostName"],
-                UserName = _configuration["RabbitMq:UserName"],
-                Password = _configuration["RabbitMq:Password"],
-                VirtualHost = _configuration["RabbitMq:VirtualHost"],
-                Port = int.TryParse(_configuration["RabbitMq:Port"], out var port) ? port : 5672
-            };
-            _exchange = _configuration["RabbitMq:Exchange"] ?? _exchange;
-            _queue = _configuration["RabbitMq:Queue"] ?? _queue;
-
-            _connection = factory.CreateConnection();
-            _channel = _connection.CreateModel();
-            _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
-            _channel.QueueDeclare(_queue, durable: true, exclusive: false, autoDelete: false);
-            
-            // Wishlist operations
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.create");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.get");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.update");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.delete");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.userWishlists");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.feed");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.like");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.unlike");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.comment");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.updateComment");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.deleteComment");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.getComments");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.uploadImage");
-            _channel.QueueBind(_queue, _exchange, routingKey: "wishlist.categories");
-            
-            // Gift operations
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.create");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.update");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.delete");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.reserve");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.cancelReserve");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.getReserved");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.getUserWishlist");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.getById");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.getShared");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.uploadImage");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.assignToWishlist");
-            _channel.QueueBind(_queue, _exchange, routingKey: "gift.removeFromWishlist");
-
-            var consumer = new AsyncEventingBasicConsumer(_channel);
-            consumer.Received += OnReceivedAsync;
-            _channel.BasicConsume(queue: _queue, autoAck: false, consumer: consumer);
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
 
             return Task.CompletedTask;
         }
@@ -375,10 +320,7 @@ namespace gift_wishlist_service.Services
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-<<<<<<< HEAD
             try { _cts?.Cancel(); } catch { }
-=======
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
             Dispose();
             return Task.CompletedTask;
         }

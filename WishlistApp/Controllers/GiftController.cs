@@ -7,8 +7,6 @@ using WishlistApp.Models;
 using WishlistApp.DTO;
 using System.Security.Claims;
 using WishlistApp.Services;
-using MongoDB.Driver;
-using MongoDB.Bson;
 
 namespace WishlistApp.Controllers
 {
@@ -17,14 +15,12 @@ namespace WishlistApp.Controllers
     [Route("api/[controller]")]
     public class GiftController : ControllerBase
     {
-        private readonly MongoDbContext _context;
-        private readonly ICloudinaryService _cloudinaryService;
+        private readonly IGiftWishlistServiceClient _giftWishlistServiceClient;
 
-        public GiftController(MongoDbContext context, ICloudinaryService cloudinaryService)
+        public GiftController(IGiftWishlistServiceClient giftWishlistServiceClient)
         {
             Console.WriteLine("=== GiftController instantiated ===");
-            _context = context;
-            _cloudinaryService = cloudinaryService;
+            _giftWishlistServiceClient = giftWishlistServiceClient;
         }
 
         private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -42,34 +38,15 @@ namespace WishlistApp.Controllers
                 return Unauthorized(new { message = "User not authenticated" });
             }
 
-            // If wishlistId is provided, validate that it exists and belongs to the user
-            if (!string.IsNullOrEmpty(wishlistId))
+            try
             {
-                var wishlist = await _context.Wishlists.Find(w => w.Id == wishlistId && w.UserId == userId).FirstOrDefaultAsync();
-                if (wishlist == null)
-                {
-                    return BadRequest(new { message = "Wishlist not found or you don't have permission to add gifts to it" });
-                }
+                var result = await _giftWishlistServiceClient.CreateGiftAsync(name, price, category, wishlistId, imageFile);
+                return Ok(result);
             }
-
-            var gift = new Gift
+            catch (Exception ex)
             {
-                Id = ObjectId.GenerateNewId().ToString(),
-                Name = name,
-                Price = price,
-                Category = category,
-                WishlistId = wishlistId // This can be null now
-            };
-            Console.WriteLine($"Gift created with WishlistId: {gift.WishlistId ?? "null"}");
-
-            if (imageFile != null)
-            {
-                var imageUrl = await _cloudinaryService.UploadImageAsync(imageFile);
-                gift.ImageUrl = imageUrl;
+                return BadRequest(new { message = ex.Message });
             }
-
-            await _context.Gifts.InsertOneAsync(gift);
-            return Ok(new { id = gift.Id, message = "Gift created successfully" });
         }
 
         // Обновление подарка
@@ -79,31 +56,33 @@ namespace WishlistApp.Controllers
             if (giftDto == null)
                 return BadRequest("Invalid gift data.");
 
-            var filter = Builders<Gift>.Filter.Eq(g => g.Id, id);
-            var existingGift = await _context.Gifts.Find(filter).FirstOrDefaultAsync();
-            if (existingGift == null)
+            try
+            {
+                var result = await _giftWishlistServiceClient.UpdateGiftAsync(id, giftDto);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException)
+            {
                 return NotFound();
-
-            existingGift.Name = giftDto.Name ?? existingGift.Name;
-            existingGift.Price = giftDto.Price ?? existingGift.Price;
-
-            existingGift.Category = giftDto.Category ?? existingGift.Category;
-
-            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, existingGift);
-            return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteGift(string id)
         {
-            var filter = Builders<Gift>.Filter.Eq(g => g.Id, id);
-            var gift = await _context.Gifts.Find(filter).FirstOrDefaultAsync();
-            if (gift == null)
-                return NotFound();
-
-            await _context.Gifts.DeleteOneAsync(filter);
-
-            return Ok();
+            try
+            {
+                var result = await _giftWishlistServiceClient.DeleteGiftAsync(id);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("{id}/reserve")]
@@ -115,45 +94,59 @@ namespace WishlistApp.Controllers
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(username))
                 return Unauthorized(new { message = "User information is missing" });
 
-            var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
-            if (gift == null) return NotFound(new { message = "Gift not found" });
-            if (!string.IsNullOrEmpty(gift.ReservedByUserId))
-                return BadRequest(new { message = "Gift is already reserved!" });
-
-            // ✅ Assign the reserving user and username
-            gift.ReservedByUserId = userId;
-            gift.ReservedByUsername = username;
-
-            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
-
-            return Ok(new { message = "Gift reserved successfully", reservedBy = username });
+            try
+            {
+                var result = await _giftWishlistServiceClient.ReserveGiftAsync(id, userId, username);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "Gift not found" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpGet("reserved")]
         public async Task<IActionResult> GetReservedGifts()
         {
             var userId = GetCurrentUserId();
-            var reservedGifts = await _context.Gifts.Find(g => g.ReservedByUserId == userId).ToListAsync();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
 
-            return Ok(reservedGifts);
+            try
+            {
+                var reservedGifts = await _giftWishlistServiceClient.GetReservedGiftsAsync(userId);
+                return Ok(reservedGifts);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("{id}/cancel-reserve")]
         public async Task<IActionResult> CancelReservation(string id)
         {
             var userId = GetCurrentUserId();
-            var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
 
-            if (gift == null) return NotFound(new { message = "Gift not found" });
-            if (gift.ReservedByUserId != userId) return Unauthorized(new { message = "You cannot cancel this reservation" });
-
-            // Убираем резерв
-            gift.ReservedByUserId = null;
-            gift.ReservedByUsername = null;
-
-            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
-
-            return Ok(new { message = "Reservation cancelled successfully" });
+            try
+            {
+                var result = await _giftWishlistServiceClient.CancelReservationAsync(id, userId);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "Gift not found" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         [HttpGet("wishlist")]
@@ -162,58 +155,46 @@ namespace WishlistApp.Controllers
             [FromQuery] string? sortBy = null)
         {
             var userId = GetCurrentUserId();
-            
-            // First, get all wishlists belonging to the user
-            var userWishlists = await _context.Wishlists.Find(w => w.UserId == userId).ToListAsync();
-            var wishlistIds = userWishlists.Select(w => w.Id).ToList();
-            
-            // Find all gifts that belong to any of the user's wishlists OR are unassigned (no wishlist)
-            var filter = Builders<Gift>.Filter.Or(
-                Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds),
-                Builders<Gift>.Filter.Eq(g => g.WishlistId, (string)null)
-            );
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
 
-            if (!string.IsNullOrEmpty(category))
+            try
             {
-                filter &= Builders<Gift>.Filter.Regex(g => g.Category, new MongoDB.Bson.BsonRegularExpression(category, "i"));
+                var gifts = await _giftWishlistServiceClient.GetUserWishlistAsync(userId, category, sortBy);
+                return Ok(gifts);
             }
-
-            var giftsQuery = _context.Gifts.Find(filter);
-
-            if (!string.IsNullOrEmpty(sortBy))
+            catch (Exception ex)
             {
-                giftsQuery = sortBy switch
-                {
-                    "price-asc" => giftsQuery.SortBy(g => g.Price),
-                    "price-desc" => giftsQuery.SortByDescending(g => g.Price),
-                    "name-asc" => giftsQuery.SortBy(g => g.Name),
-                    "name-desc" => giftsQuery.SortByDescending(g => g.Name),
-                    _ => giftsQuery
-                };
+                return BadRequest(new { message = ex.Message });
             }
-
-            var gifts = await giftsQuery.ToListAsync();
-            return Ok(gifts);
         }
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetGiftById(string id)
         {
-            var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
-
-            if (gift == null)
+            try
+            {
+                var gift = await _giftWishlistServiceClient.GetGiftByIdAsync(id);
+                return Ok(gift);
+            }
+            catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "Gift not found" });
             }
-
-            return Ok(gift);
         }
 
         [HttpGet("shared/{userId}")]
         public async Task<IActionResult> GetSharedWishlist(string userId)
         {
-            var gifts = await _context.Gifts.Find(g => g.WishlistId == userId).ToListAsync();
-            return Ok(gifts);
+            try
+            {
+                var gifts = await _giftWishlistServiceClient.GetSharedWishlistAsync(userId);
+                return Ok(gifts);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // Загрузка изображения для существующего подарка
@@ -223,17 +204,19 @@ namespace WishlistApp.Controllers
             if (imageFile == null || imageFile.Length == 0)
                 return BadRequest("No file uploaded.");
 
-            var filter = Builders<Gift>.Filter.Eq(g => g.Id, id);
-            var gift = await _context.Gifts.Find(filter).FirstOrDefaultAsync();
-            
-            if (gift == null)
+            try
+            {
+                var imageUrl = await _giftWishlistServiceClient.UploadGiftImageAsync(id, imageFile);
+                return Ok(new { ImageUrl = imageUrl });
+            }
+            catch (KeyNotFoundException)
+            {
                 return NotFound();
-
-            var imageUrl = await _cloudinaryService.UploadImageAsync(imageFile);
-            gift.ImageUrl = imageUrl;
-
-            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
-            return Ok(new { ImageUrl = imageUrl });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("{id}/assign-to-wishlist")]
@@ -248,57 +231,22 @@ namespace WishlistApp.Controllers
                 return Unauthorized(new { message = "User not authenticated" });
             }
 
-            // Find the gift
-            var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
-            if (gift == null)
+            try
             {
-                Console.WriteLine($"Gift not found: {id}");
-                return NotFound(new { message = "Gift not found" });
+                var result = await _giftWishlistServiceClient.AssignGiftToWishlistAsync(id, assignDto.WishlistId, userId);
+                Console.WriteLine($"Gift {id} successfully assigned to wishlist {assignDto.WishlistId}");
+                return Ok(result);
             }
-            Console.WriteLine($"Gift found: {gift.Name}, WishlistId: {gift.WishlistId}");
-
-            // Verify the gift belongs to the current user
-            // If the gift has a wishlist, check if it belongs to the user
-            // If the gift has no wishlist (unassigned), it belongs to the user
-            if (!string.IsNullOrEmpty(gift.WishlistId))
+            catch (KeyNotFoundException ex)
             {
-                var userWishlists = await _context.Wishlists.Find(w => w.UserId == userId).ToListAsync();
-                var userWishlistIds = userWishlists.Select(w => w.Id).ToList();
-                Console.WriteLine($"User wishlists: {string.Join(", ", userWishlistIds)}");
-                Console.WriteLine($"Gift wishlist: {gift.WishlistId}");
-                
-                if (!userWishlistIds.Contains(gift.WishlistId))
-                {
-                    Console.WriteLine("User doesn't have permission to modify this gift");
-                    return Unauthorized(new { message = "You don't have permission to modify this gift" });
-                }
+                Console.WriteLine($"Gift or wishlist not found: {ex.Message}");
+                return NotFound(new { message = ex.Message });
             }
-            else
+            catch (UnauthorizedAccessException ex)
             {
-                Console.WriteLine("Gift is unassigned - user can modify it");
+                Console.WriteLine($"User doesn't have permission: {ex.Message}");
+                return Unauthorized(new { message = ex.Message });
             }
-
-            // Verify the target wishlist exists and belongs to the current user
-            var targetWishlist = await _context.Wishlists.Find(w => w.Id == assignDto.WishlistId).FirstOrDefaultAsync();
-            if (targetWishlist == null)
-            {
-                Console.WriteLine($"Target wishlist not found: {assignDto.WishlistId}");
-                return NotFound(new { message = "Target wishlist not found" });
-            }
-            Console.WriteLine($"Target wishlist found: {targetWishlist.Title}, Owner: {targetWishlist.UserId}");
-
-            if (targetWishlist.UserId != userId)
-            {
-                Console.WriteLine("User doesn't have permission to add gifts to this wishlist");
-                return Unauthorized(new { message = "You don't have permission to add gifts to this wishlist" });
-            }
-
-            // Update the gift's wishlist
-            gift.WishlistId = assignDto.WishlistId;
-            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
-            Console.WriteLine($"Gift {gift.Name} successfully assigned to wishlist {assignDto.WishlistId}");
-
-            return Ok(new { message = "Gift assigned to wishlist successfully" });
         }
 
         [HttpPost("{id}/remove-from-wishlist")]
@@ -313,40 +261,22 @@ namespace WishlistApp.Controllers
                 return Unauthorized(new { message = "User not authenticated" });
             }
 
-            // Find the gift
-            var gift = await _context.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
-            if (gift == null)
+            try
             {
-                Console.WriteLine($"Gift not found: {id}");
-                return NotFound(new { message = "Gift not found" });
+                var result = await _giftWishlistServiceClient.RemoveGiftFromWishlistAsync(id, userId);
+                Console.WriteLine($"Gift {id} successfully removed from wishlist");
+                return Ok(result);
             }
-            Console.WriteLine($"Gift found: {gift.Name}, WishlistId: {gift.WishlistId}");
-
-            // Verify the gift belongs to the current user
-            if (!string.IsNullOrEmpty(gift.WishlistId))
+            catch (KeyNotFoundException ex)
             {
-                var userWishlists = await _context.Wishlists.Find(w => w.UserId == userId).ToListAsync();
-                var userWishlistIds = userWishlists.Select(w => w.Id).ToList();
-                Console.WriteLine($"User wishlists: {string.Join(", ", userWishlistIds)}");
-                Console.WriteLine($"Gift wishlist: {gift.WishlistId}");
-                
-                if (!userWishlistIds.Contains(gift.WishlistId))
-                {
-                    Console.WriteLine("User doesn't have permission to modify this gift");
-                    return Unauthorized(new { message = "You don't have permission to modify this gift" });
-                }
+                Console.WriteLine($"Gift not found: {ex.Message}");
+                return NotFound(new { message = ex.Message });
             }
-            else
+            catch (UnauthorizedAccessException ex)
             {
-                Console.WriteLine("Gift is unassigned - user can modify it");
+                Console.WriteLine($"User doesn't have permission: {ex.Message}");
+                return Unauthorized(new { message = ex.Message });
             }
-
-            // Remove the gift from the wishlist by setting WishlistId to null
-            gift.WishlistId = null;
-            await _context.Gifts.ReplaceOneAsync(g => g.Id == id, gift);
-            Console.WriteLine($"Gift {gift.Name} successfully removed from wishlist");
-
-            return Ok(new { message = "Gift removed from wishlist successfully" });
         }
     }
 }

@@ -11,11 +11,11 @@ namespace WishlistApp.Controllers
     [Route("api/[controller]")]
     public class UsersController : ControllerBase
     {
-        private readonly IUserService _userService;
+        private readonly IUserServiceClient _userServiceClient;
 
-        public UsersController(IUserService userService)
+        public UsersController(IUserServiceClient userServiceClient)
         {
-            _userService = userService;
+            _userServiceClient = userServiceClient;
         }
 
         private string? GetCurrentUserId()
@@ -35,7 +35,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var profile = await _userService.GetUserProfileAsync(id, currentUserId);
+                var profile = await _userServiceClient.GetUserProfileAsync(id, currentUserId);
                 return Ok(profile);
             }
             catch (KeyNotFoundException)
@@ -58,7 +58,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var profile = await _userService.UpdateUserProfileAsync(currentUserId, updateDto);
+                var profile = await _userServiceClient.UpdateUserProfileAsync(currentUserId, updateDto);
                 return Ok(profile);
             }
             catch (KeyNotFoundException)
@@ -81,7 +81,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var avatarUrl = await _userService.UpdateAvatarAsync(currentUserId, file);
+                var avatarUrl = await _userServiceClient.UpdateAvatarAsync(currentUserId, file);
                 return Ok(new { avatarUrl });
             }
             catch (ArgumentException ex)
@@ -100,7 +100,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var result = await _userService.FollowUserAsync(currentUserId, id);
+                var result = await _userServiceClient.FollowUserAsync(currentUserId, id);
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
@@ -127,7 +127,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var result = await _userService.UnfollowUserAsync(currentUserId, id);
+                var result = await _userServiceClient.UnfollowUserAsync(currentUserId, id);
                 return Ok(result);
             }
             catch (KeyNotFoundException)
@@ -153,7 +153,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var users = await _userService.SearchUsersAsync(query, currentUserId, page, pageSize);
+                var users = await _userServiceClient.SearchUsersAsync(query, currentUserId, page, pageSize);
                 return Ok(users);
             }
             catch (ArgumentException ex)
@@ -175,7 +175,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var followers = await _userService.GetFollowersAsync(id, currentUserId, page, pageSize);
+                var followers = await _userServiceClient.GetFollowersAsync(id, currentUserId, page, pageSize);
                 return Ok(followers);
             }
             catch (KeyNotFoundException)
@@ -201,7 +201,7 @@ namespace WishlistApp.Controllers
             }
             try
             {
-                var following = await _userService.GetFollowingAsync(id, currentUserId, page, pageSize);
+                var following = await _userServiceClient.GetFollowingAsync(id, currentUserId, page, pageSize);
                 return Ok(following);
             }
             catch (KeyNotFoundException)

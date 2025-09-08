@@ -6,11 +6,11 @@ using System.Security.Claims;
 using System.Text;
 using BCrypt.Net;
 using MongoDB.Driver;
-using WishlistApp.Models;
-using WishlistApp.Services;
-using WishlistApp.DTO;
+using auth_service.Models;
+using auth_service.Services;
+using auth_service.DTO;
 
-namespace WishlistApp.Controllers
+namespace auth_service.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]

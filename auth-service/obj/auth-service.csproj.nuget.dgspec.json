@@ -1,37 +1,37 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\yusufova_a\\WishlistApp\\WishlistWebApp\\auth-service\\auth-service.csproj": {}
+    "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\auth-service.csproj": {}
   },
   "projects": {
-    "C:\\Users\\yusufova_a\\WishlistApp\\WishlistWebApp\\auth-service\\auth-service.csproj": {
+    "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\auth-service.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\yusufova_a\\WishlistApp\\WishlistWebApp\\auth-service\\auth-service.csproj",
+        "projectUniqueName": "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\auth-service.csproj",
         "projectName": "auth-service",
-        "projectPath": "C:\\Users\\yusufova_a\\WishlistApp\\WishlistWebApp\\auth-service\\auth-service.csproj",
+        "projectPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\auth-service.csproj",
         "packagesPath": "C:\\Users\\yusufova_a\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\yusufova_a\\WishlistApp\\WishlistWebApp\\auth-service\\obj\\",
+        "outputPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
+          "C:\\Users\\yusufova_a\\WishlistWebApp\\NuGet.Config",
           "C:\\Users\\yusufova_a\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
-          "net9.0"
+          "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "C:\\Program Files\\dotnet\\library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "net9.0": {
-            "targetAlias": "net9.0",
+          "net8.0": {
+            "targetAlias": "net8.0",
             "projectReferences": {}
           }
         },
@@ -48,12 +48,32 @@
         "SdkAnalysisLevel": "9.0.200"
       },
       "frameworks": {
-        "net9.0": {
-          "targetAlias": "net9.0",
+        "net8.0": {
+          "targetAlias": "net8.0",
           "dependencies": {
-            "Microsoft.AspNetCore.OpenApi": {
+            "BCrypt.Net-Next": {
               "target": "Package",
-              "version": "[9.0.2, )"
+              "version": "[4.0.3, )"
+            },
+            "Microsoft.AspNetCore.Authentication.JwtBearer": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.IdentityModel.Tokens": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "MongoDB.Driver": {
+              "target": "Package",
+              "version": "[2.19.0, )"
+            },
+            "Swashbuckle.AspNetCore": {
+              "target": "Package",
+              "version": "[7.2.0, )"
+            },
+            "System.IdentityModel.Tokens.Jwt": {
+              "target": "Package",
+              "version": "[8.0.0, )"
             }
           },
           "imports": [

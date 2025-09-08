@@ -1,0 +1,8 @@
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.csproj.AssemblyReference.cache
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.AssemblyInfoInputs.cache
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.AssemblyInfo.cs
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.csproj.CoreCompileInputs.cache
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.MvcApplicationPartsAssemblyInfo.cs
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\yusufova_a\WishlistWebApp\user-service\obj\Debug\net9.0\user-service.sourcelink.json

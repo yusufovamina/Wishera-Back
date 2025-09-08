@@ -15,4 +15,12 @@
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\WishlistApp\WishlistApp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Services\AuthRpcServer.cs" />
+  </ItemGroup>
+
 </Project>

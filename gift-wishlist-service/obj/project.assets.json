@@ -100,10 +100,12 @@
       "Microsoft.Extensions.ApiDescription.Server/6.0.5": {
         "type": "package",
         "build": {
-          "build/_._": {}
+          "build/Microsoft.Extensions.ApiDescription.Server.props": {},
+          "build/Microsoft.Extensions.ApiDescription.Server.targets": {}
         },
         "buildMultiTargeting": {
-          "buildMultiTargeting/_._": {}
+          "buildMultiTargeting/Microsoft.Extensions.ApiDescription.Server.props": {},
+          "buildMultiTargeting/Microsoft.Extensions.ApiDescription.Server.targets": {}
         }
       },
       "Microsoft.Extensions.Logging.Abstractions/2.0.0": {
@@ -580,10 +582,10 @@
           "Swashbuckle.AspNetCore.SwaggerUI": "7.2.0"
         },
         "build": {
-          "build/_._": {}
+          "build/Swashbuckle.AspNetCore.props": {}
         },
         "buildMultiTargeting": {
-          "buildMultiTargeting/_._": {}
+          "buildMultiTargeting/Swashbuckle.AspNetCore.props": {}
         }
       },
       "Swashbuckle.AspNetCore.Swagger/7.2.0": {
@@ -1408,7 +1410,8 @@
           "CloudinaryDotNet": "1.27.2",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "8.0.0",
           "Microsoft.IdentityModel.Tokens": "8.0.0",
-          "MongoDB.Driver": "2.19.0",
+          "MongoDB.Driver": "2.25.0",
+          "RabbitMQ.Client": "6.8.1",
           "Swashbuckle.AspNetCore": "7.2.0",
           "System.IdentityModel.Tokens.Jwt": "8.0.0"
         },
@@ -4678,6 +4681,7 @@
       "Microsoft.IdentityModel.Tokens >= 8.0.0",
       "MongoDB.Driver >= 2.25.0",
       "RabbitMQ.Client >= 6.8.1",
+      "Swashbuckle.AspNetCore >= 7.2.0",
       "System.IdentityModel.Tokens.Jwt >= 8.0.0",
       "WishlistApp >= 1.0.0"
     ]
@@ -4756,6 +4760,10 @@
           "RabbitMQ.Client": {
             "target": "Package",
             "version": "[6.8.1, )"
+          },
+          "Swashbuckle.AspNetCore": {
+            "target": "Package",
+            "version": "[7.2.0, )"
           },
           "System.IdentityModel.Tokens.Jwt": {
             "target": "Package",

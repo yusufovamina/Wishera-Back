@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using auth_service.DTO;
 using auth_service.Models;
+using auth_service.Services;
 
 namespace auth_service.Services
 {
@@ -100,8 +101,8 @@ namespace auth_service.Services
             var resetTokenExpiry = DateTime.UtcNow.AddHours(24);
 
             var update = Builders<User>.Update
-                .Set(u => u.ResetToken, resetToken)
-                .Set(u => u.ResetTokenExpiry, resetTokenExpiry);
+                .Set(u => u.ResetPasswordToken, resetToken)
+                .Set(u => u.ResetPasswordTokenExpiry, resetTokenExpiry);
 
             await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
 
@@ -122,18 +123,18 @@ namespace auth_service.Services
 
         public async Task ResetPasswordAsync(string token, string newPassword)
         {
-            var user = await _dbContext.Users.Find(u => u.ResetToken == token).FirstOrDefaultAsync();
+            var user = await _dbContext.Users.Find(u => u.ResetPasswordToken == token).FirstOrDefaultAsync();
             if (user == null)
                 throw new InvalidOperationException("Invalid reset token");
 
-            if (user.ResetTokenExpiry < DateTime.UtcNow)
+            if (user.ResetPasswordTokenExpiry < DateTime.UtcNow)
                 throw new InvalidOperationException("Reset token has expired");
 
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
             var update = Builders<User>.Update
                 .Set(u => u.PasswordHash, passwordHash)
-                .Set(u => u.ResetToken, (string?)null)
-                .Set(u => u.ResetTokenExpiry, (DateTime?)null);
+                .Set(u => u.ResetPasswordToken, (string?)null)
+                .Set(u => u.ResetPasswordTokenExpiry, (DateTime?)null);
 
             await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
         }
@@ -161,10 +162,9 @@ namespace auth_service.Services
             return new AuthResponseDTO
             {
                 Token = tokenHandler.WriteToken(token),
-                UserId = user.Id,
                 Username = user.Username,
                 Email = user.Email,
-                AvatarUrl = user.AvatarUrl
+                ExpiresAt = tokenDescriptor.Expires ?? DateTime.UtcNow.AddDays(7)
             };
         }
     }

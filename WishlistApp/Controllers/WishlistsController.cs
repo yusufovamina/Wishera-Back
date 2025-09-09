@@ -271,7 +271,7 @@ namespace WishlistApp.Controllers
                     return NoContent();
                 return NotFound(new { message = "Comment not found" });
             }
-            catch (UnauthorizedAccessException ex)
+            catch (UnauthorizedAccessException)
             {
                 return Forbid();
             }

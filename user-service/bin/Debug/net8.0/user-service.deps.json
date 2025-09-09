@@ -742,6 +742,7 @@
           "Microsoft.AspNetCore.Authentication.JwtBearer": "8.0.0",
           "Microsoft.IdentityModel.Tokens": "8.0.0",
           "MongoDB.Driver": "2.25.0",
+          "RabbitMQ.Client": "6.8.1",
           "Swashbuckle.AspNetCore": "7.2.0",
           "System.IdentityModel.Tokens.Jwt": "8.0.0"
         },

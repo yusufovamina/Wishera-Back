@@ -52,7 +52,6 @@
           "targetAlias": "net8.0",
           "dependencies": {
             "BCrypt.Net-Next": {
-<<<<<<< HEAD
               "target": "Package",
               "version": "[4.0.3, )"
             },
@@ -66,7 +65,7 @@
             },
             "MongoDB.Driver": {
               "target": "Package",
-              "version": "[2.19.0, )"
+              "version": "[2.25.0, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
@@ -75,34 +74,6 @@
             "System.IdentityModel.Tokens.Jwt": {
               "target": "Package",
               "version": "[8.0.0, )"
-=======
-              "target": "Package",
-              "version": "[4.0.3, )"
-            },
-            "Microsoft.AspNetCore.Authentication.JwtBearer": {
-              "target": "Package",
-              "version": "[9.0.0, )"
-            },
-            "Microsoft.AspNetCore.OpenApi": {
-              "target": "Package",
-              "version": "[9.0.0, )"
-            },
-            "Microsoft.IdentityModel.Tokens": {
-              "target": "Package",
-              "version": "[8.14.0, )"
-            },
-            "MongoDB.Driver": {
-              "target": "Package",
-              "version": "[2.25.0, )"
-            },
-            "RabbitMQ.Client": {
-              "target": "Package",
-              "version": "[6.8.1, )"
-            },
-            "System.IdentityModel.Tokens.Jwt": {
-              "target": "Package",
-              "version": "[8.14.0, )"
->>>>>>> 134c1c6a7281def98db2896a1d3c460cf432b684
             }
           },
           "imports": [

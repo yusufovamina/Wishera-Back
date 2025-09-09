@@ -1,7 +1,7 @@
 using MongoDB.Driver;
-using WishlistApp.Models;
+using auth_service.Models;
 
-namespace WishlistApp.Services
+namespace auth_service.Services
 {
     public class MongoDbContext
     {

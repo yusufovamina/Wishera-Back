@@ -9,7 +9,14 @@ using WishlistApp.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().ConfigureApplicationPartManager(apm =>
+{
+    var orphanPart = apm.ApplicationParts.FirstOrDefault(p => string.Equals(p.Name, "WishlistApp", StringComparison.OrdinalIgnoreCase));
+    if (orphanPart != null)
+    {
+        apm.ApplicationParts.Remove(orphanPart);
+    }
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -55,6 +62,18 @@ builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 // RabbitMQ RPC server
 builder.Services.AddHostedService<GiftWishlistRpcServer>();
 
+// CORS for frontend
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -62,6 +81,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseRouting();
+app.UseCors("Frontend");
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapControllers();
 
 app.Run();

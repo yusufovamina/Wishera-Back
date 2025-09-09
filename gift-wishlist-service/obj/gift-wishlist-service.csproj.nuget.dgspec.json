@@ -75,6 +75,10 @@
               "target": "Package",
               "version": "[6.8.1, )"
             },
+            "Swashbuckle.AspNetCore": {
+              "target": "Package",
+              "version": "[7.2.0, )"
+            },
             "System.IdentityModel.Tokens.Jwt": {
               "target": "Package",
               "version": "[8.0.0, )"
@@ -168,7 +172,11 @@
             },
             "MongoDB.Driver": {
               "target": "Package",
-              "version": "[2.19.0, )"
+              "version": "[2.25.0, )"
+            },
+            "RabbitMQ.Client": {
+              "target": "Package",
+              "version": "[6.8.1, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",

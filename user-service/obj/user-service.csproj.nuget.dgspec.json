@@ -168,7 +168,11 @@
             },
             "MongoDB.Driver": {
               "target": "Package",
-              "version": "[2.19.0, )"
+              "version": "[2.25.0, )"
+            },
+            "RabbitMQ.Client": {
+              "target": "Package",
+              "version": "[6.8.1, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",

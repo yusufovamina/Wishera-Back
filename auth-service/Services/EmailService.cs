@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 
-namespace WishlistApp.Services
+namespace auth_service.Services
 {
     public interface IEmailService
     {

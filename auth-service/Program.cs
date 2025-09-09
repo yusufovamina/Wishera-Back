@@ -1,11 +1,24 @@
 using MongoDB.Driver;
-using WishlistApp.Services;
+using auth_service.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// CORS
+const string CorsPolicyName = "DevCors";
+builder.Services.AddCors(options =>
+{
+	options.AddPolicy(CorsPolicyName, policy =>
+	{
+		policy.WithOrigins("http://localhost:3000")
+			.AllowAnyHeader()
+			.AllowAnyMethod()
+			.AllowCredentials();
+	});
+});
 
 // MongoDB
 builder.Services.AddSingleton<IMongoClient>(_ =>
@@ -34,7 +47,14 @@ if (app.Environment.IsDevelopment())
 	app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Enable HTTPS redirection only outside Development (http profile doesn't define https url)
+if (!app.Environment.IsDevelopment())
+{
+	app.UseHttpsRedirection();
+}
+
+// Apply CORS before auth and endpoints
+app.UseCors(CorsPolicyName);
 
 app.MapControllers();
 

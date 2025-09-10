@@ -56,3 +56,4 @@ C:\Users\yusufova_a\WishlistWebApp\auth-service\obj\Debug\net8.0\refint\auth-ser
 C:\Users\yusufova_a\WishlistWebApp\auth-service\obj\Debug\net8.0\auth-service.pdb
 C:\Users\yusufova_a\WishlistWebApp\auth-service\obj\Debug\net8.0\auth-service.genruntimeconfig.cache
 C:\Users\yusufova_a\WishlistWebApp\auth-service\obj\Debug\net8.0\ref\auth-service.dll
+C:\Users\yusufova_a\WishlistWebApp\auth-service\bin\Debug\net8.0\RabbitMQ.Client.dll

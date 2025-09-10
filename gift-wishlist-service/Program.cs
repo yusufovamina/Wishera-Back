@@ -58,6 +58,7 @@ builder.Services
 // Register core services (match hosted service singleton lifetime)
 builder.Services.AddSingleton<WishlistApp.Services.IWishlistService, WishlistService>();
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
+builder.Services.AddSingleton<IGiftApiService, GiftApiService>();
 
 // RabbitMQ RPC server
 builder.Services.AddHostedService<GiftWishlistRpcServer>();

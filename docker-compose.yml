@@ -79,6 +79,11 @@ services:
       - rabbitmq
     environment:
       - ASPNETCORE_URLS=http://+:5155
+      - RabbitMq__HostName=rabbitmq
+      - RabbitMq__UserName=guest
+      - RabbitMq__Password=guest
+      - RabbitMq__Port=5672
+      - ChatServiceUrl=http://chat-service:5000
     ports:
       - "5155:5155"
 

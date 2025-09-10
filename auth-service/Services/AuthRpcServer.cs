@@ -2,24 +2,25 @@ using System.Text;
 using System.Text.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WishlistApp.DTO;
-using WishlistApp.Services;
+using Microsoft.Extensions.DependencyInjection;
+using auth_service.DTO;
+using auth_service.Services;
 
 namespace auth_service.Services
 {
     public class AuthRpcServer : IHostedService, IDisposable
     {
         private readonly IConfiguration _configuration;
-        private readonly IAuthService _authService;
+        private readonly IServiceScopeFactory _scopeFactory;
         private IConnection? _connection;
         private IModel? _channel;
         private string _exchange = "auth.exchange";
         private string _queue = "auth.requests";
 
-        public AuthRpcServer(IConfiguration configuration, IAuthService authService)
+        public AuthRpcServer(IConfiguration configuration, IServiceScopeFactory scopeFactory)
         {
             _configuration = configuration;
-            _authService = authService;
+            _scopeFactory = scopeFactory;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -83,25 +84,28 @@ namespace auth_service.Services
 
         private async Task<string> HandleMessageAsync(string routingKey, string payload)
         {
+            using var scope = _scopeFactory.CreateScope();
+            var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
             switch (routingKey)
             {
                 case "auth.register":
                     var reg = JsonSerializer.Deserialize<RegisterDTO>(payload)!;
-                    return JsonSerializer.Serialize(await _authService.RegisterAsync(reg));
+                    return JsonSerializer.Serialize(await authService.RegisterAsync(reg));
                 case "auth.login":
                     var login = JsonSerializer.Deserialize<LoginDTO>(payload)!;
-                    return JsonSerializer.Serialize(await _authService.LoginAsync(login));
+                    return JsonSerializer.Serialize(await authService.LoginAsync(login));
                 case "auth.checkEmail":
-                    return JsonSerializer.Serialize(await _authService.IsEmailUniqueAsync(payload));
+                    return JsonSerializer.Serialize(await authService.IsEmailUniqueAsync(payload));
                 case "auth.checkUsername":
-                    return JsonSerializer.Serialize(await _authService.IsUsernameUniqueAsync(payload));
+                    return JsonSerializer.Serialize(await authService.IsUsernameUniqueAsync(payload));
                 case "auth.forgot":
                     var forgot = JsonSerializer.Deserialize<ForgotPasswordDTO>(payload)!;
-                    await _authService.ForgotPasswordAsync(forgot.Email);
+                    await authService.ForgotPasswordAsync(forgot.Email);
                     return JsonSerializer.Serialize(new { ok = true });
                 case "auth.reset":
                     var reset = JsonSerializer.Deserialize<ResetPasswordDTO>(payload)!;
-                    await _authService.ResetPasswordAsync(reset.Token, reset.NewPassword);
+                    await authService.ResetPasswordAsync(reset.Token, reset.NewPassword);
                     return JsonSerializer.Serialize(new { ok = true });
                 default:
                     throw new InvalidOperationException($"Unknown routing key: {routingKey}");

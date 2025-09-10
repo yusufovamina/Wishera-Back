@@ -34,16 +34,24 @@ namespace auth_service.Services
 
         public async Task<AuthResponseDTO> RegisterAsync(RegisterDTO registerDto)
         {
-            if (!await IsEmailUniqueAsync(registerDto.Email))
+            var emailNormalized = registerDto.Email.Trim().ToLowerInvariant();
+            var usernameNormalized = registerDto.Username.Trim().ToLowerInvariant();
+
+            // ensure unique by normalized fields
+            var emailExists = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).AnyAsync();
+            if (emailExists)
                 throw new InvalidOperationException("Email is already registered");
 
-            if (!await IsUsernameUniqueAsync(registerDto.Username))
+            var usernameExists = await _dbContext.Users.Find(u => u.UsernameNormalized == usernameNormalized).AnyAsync();
+            if (usernameExists)
                 throw new InvalidOperationException("Username is already taken");
 
             var user = new User
             {
                 Username = registerDto.Username,
                 Email = registerDto.Email,
+                EmailNormalized = emailNormalized,
+                UsernameNormalized = usernameNormalized,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
                 CreatedAt = DateTime.UtcNow,
                 LastActive = DateTime.UtcNow
@@ -67,7 +75,8 @@ namespace auth_service.Services
 
         public async Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto)
         {
-            var user = await _dbContext.Users.Find(u => u.Email == loginDto.Email).FirstOrDefaultAsync()
+            var emailNormalized = loginDto.Email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync()
                 ?? throw new InvalidOperationException("Invalid email or password");
 
             if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
@@ -82,12 +91,14 @@ namespace auth_service.Services
 
         public async Task<bool> IsEmailUniqueAsync(string email)
         {
-            return !await _dbContext.Users.Find(u => u.Email == email).AnyAsync();
+            var normalized = email.Trim().ToLowerInvariant();
+            return !await _dbContext.Users.Find(u => u.EmailNormalized == normalized).AnyAsync();
         }
 
         public async Task<bool> IsUsernameUniqueAsync(string username)
         {
-            return !await _dbContext.Users.Find(u => u.Username == username).AnyAsync();
+            var normalized = username.Trim().ToLowerInvariant();
+            return !await _dbContext.Users.Find(u => u.UsernameNormalized == normalized).AnyAsync();
         }
 
         public async Task ForgotPasswordAsync(string email)
@@ -161,6 +172,7 @@ namespace auth_service.Services
 
             return new AuthResponseDTO
             {
+                UserId = user.Id,
                 Token = tokenHandler.WriteToken(token),
                 Username = user.Username,
                 Email = user.Email,

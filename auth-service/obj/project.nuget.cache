@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "fkJLMOMOo6A=",
+  "dgSpecHash": "LS4j/4YEzec=",
   "success": true,
   "projectFilePath": "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\auth-service.csproj",
   "expectedPackageFiles": [
@@ -24,6 +24,7 @@
     "C:\\Users\\yusufova_a\\.nuget\\packages\\mongodb.driver\\2.25.0\\mongodb.driver.2.25.0.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\mongodb.driver.core\\2.25.0\\mongodb.driver.core.2.25.0.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\mongodb.libmongocrypt\\1.8.2\\mongodb.libmongocrypt.1.8.2.nupkg.sha512",
+    "C:\\Users\\yusufova_a\\.nuget\\packages\\rabbitmq.client\\6.8.1\\rabbitmq.client.6.8.1.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\sharpcompress\\0.30.1\\sharpcompress.0.30.1.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\snappier\\1.0.0\\snappier.1.0.0.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\swashbuckle.aspnetcore\\7.2.0\\swashbuckle.aspnetcore.7.2.0.nupkg.sha512",
@@ -36,6 +37,7 @@
     "C:\\Users\\yusufova_a\\.nuget\\packages\\system.runtime.compilerservices.unsafe\\5.0.0\\system.runtime.compilerservices.unsafe.5.0.0.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\system.security.accesscontrol\\5.0.0\\system.security.accesscontrol.5.0.0.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\system.security.principal.windows\\5.0.0\\system.security.principal.windows.5.0.0.nupkg.sha512",
+    "C:\\Users\\yusufova_a\\.nuget\\packages\\system.threading.channels\\7.0.0\\system.threading.channels.7.0.0.nupkg.sha512",
     "C:\\Users\\yusufova_a\\.nuget\\packages\\zstdsharp.port\\0.7.3\\zstdsharp.port.0.7.3.nupkg.sha512"
   ],
   "logs": []

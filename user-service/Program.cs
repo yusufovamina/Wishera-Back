@@ -22,6 +22,18 @@ builder.Services.AddSwaggerGen(o =>
 	o.DocumentFilter<user_service.SwaggerFilters.IncludeOnlyUsersFilter>();
 });
 
+// CORS for frontend
+builder.Services.AddCors(options =>
+{
+	options.AddPolicy("Frontend", policy =>
+	{
+		policy.WithOrigins("http://localhost:3000")
+			  .AllowAnyHeader()
+			  .AllowAnyMethod()
+			  .AllowCredentials();
+	});
+});
+
 // Mongo
 var mongoClient = new MongoClient(builder.Configuration.GetConnectionString("MongoDB"));
 var database = mongoClient.GetDatabase("WishlistApp");
@@ -68,6 +80,11 @@ if (app.Environment.IsDevelopment())
 	app.UseSwagger();
 	app.UseSwaggerUI();
 }
+
+app.UseRouting();
+app.UseCors("Frontend");
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 

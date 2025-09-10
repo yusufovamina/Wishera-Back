@@ -34,6 +34,11 @@ namespace gift_wishlist_service.Services
 
         public async Task<WishlistResponseDTO> CreateWishlistAsync(string userId, CreateWishlistDTO createDto)
         {
+            // Validate userId format before querying Mongo to avoid parse errors
+            if (string.IsNullOrEmpty(userId) || !ObjectIdValidator.IsValidObjectId(userId))
+            {
+                throw new ArgumentException("Invalid user id format.");
+            }
             var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
             if (user == null) throw new KeyNotFoundException("User not found.");
 
@@ -149,6 +154,16 @@ namespace gift_wishlist_service.Services
 
         public async Task<List<WishlistFeedDTO>> GetUserWishlistsAsync(string userId, string currentUserId, int page, int pageSize)
         {
+            // Validate userId format before querying Mongo to avoid parse errors
+            if (string.IsNullOrEmpty(userId) || !ObjectIdValidator.IsValidObjectId(userId))
+            {
+                throw new ArgumentException("Invalid user id format.");
+            }
+            // Validate currentUserId format before querying Mongo to avoid parse errors
+            if (!string.IsNullOrEmpty(currentUserId) && !ObjectIdValidator.IsValidObjectId(currentUserId))
+            {
+                throw new ArgumentException("Invalid current user id format.");
+            }
             var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
             if (user == null) throw new KeyNotFoundException("User not found.");
 
@@ -189,10 +204,12 @@ namespace gift_wishlist_service.Services
         public async Task<List<WishlistFeedDTO>> GetFeedAsync(string currentUserId, int page, int pageSize)
         {
             var user = await _dbContext.Users.Find(u => u.Id == currentUserId).FirstOrDefaultAsync();
-            if (user == null) throw new KeyNotFoundException("Current user not found.");
-
-            var followingIds = user.FollowingIds ?? new List<string>();
-            followingIds.Add(currentUserId); // Include current user's own wishlists
+            // If user not found, proceed with public feed only
+            var followingIds = user?.FollowingIds ?? new List<string>();
+            if (!string.IsNullOrEmpty(currentUserId))
+            {
+                followingIds.Add(currentUserId); // Include current user's own wishlists when possible
+            }
 
             var filterBuilder = Builders<Wishlist>.Filter;
             var filter = filterBuilder.In(w => w.UserId, followingIds);

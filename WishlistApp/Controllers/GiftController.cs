@@ -89,7 +89,7 @@ namespace WishlistApp.Controllers
         public async Task<IActionResult> ReserveGift(string id)
         {
             var userId = GetCurrentUserId();
-            var username = User.FindFirst(ClaimTypes.GivenName)?.Value; // ✅ Fetch username
+            var username = User.FindFirst(ClaimTypes.Name)?.Value;
 
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(username))
                 return Unauthorized(new { message = "User information is missing" });

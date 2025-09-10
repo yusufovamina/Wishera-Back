@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using user_service.Services;
 using WishlistApp.DTO;
 
 namespace user_service.Controllers
 {
 	[ApiController]
+	[Authorize]
 	[Route("api/[controller]")]
 	public class UsersController : ControllerBase
 	{
@@ -15,60 +18,167 @@ namespace user_service.Controllers
 			_userService = userService;
 		}
 
+		private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
 		[HttpGet("{id}")]
-		public async Task<ActionResult<UserProfileDTO>> GetById(string id, [FromQuery] string currentUserId)
+		public async Task<ActionResult<UserProfileDTO>> GetById(string id)
 		{
-			var profile = await _userService.GetUserProfileAsync(id, currentUserId);
-			return Ok(profile);
+			try
+			{
+				var currentUserId = GetCurrentUserId() ?? string.Empty;
+				var profile = await _userService.GetUserProfileAsync(id, currentUserId);
+				return Ok(profile);
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		}
 
 		[HttpPut("profile")]
-		public async Task<ActionResult<UserProfileDTO>> UpdateProfile([FromQuery] string userId, [FromBody] UpdateUserProfileDTO updateDto)
+		public async Task<ActionResult<UserProfileDTO>> UpdateProfile([FromBody] UpdateUserProfileDTO updateDto)
 		{
-			var profile = await _userService.UpdateUserProfileAsync(userId, updateDto);
-			return Ok(profile);
+			try
+			{
+				var userId = GetCurrentUserId() ?? string.Empty;
+				var profile = await _userService.UpdateUserProfileAsync(userId, updateDto);
+				return Ok(profile);
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		}
 
 		[HttpPost("avatar")]
-		public async Task<ActionResult<object>> UploadAvatar([FromQuery] string userId, IFormFile file)
+		public async Task<ActionResult<object>> UploadAvatar(IFormFile file)
 		{
-			var url = await _userService.UpdateAvatarAsync(userId, file);
-			return Ok(new { avatarUrl = url });
+			try
+			{
+				var userId = GetCurrentUserId() ?? string.Empty;
+				var url = await _userService.UpdateAvatarAsync(userId, file);
+				return Ok(new { avatarUrl = url });
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		}
 
 		[HttpPost("follow/{id}")]
-		public async Task<ActionResult<object>> Follow(string id, [FromQuery] string currentUserId)
+		public async Task<ActionResult<object>> Follow(string id)
 		{
-			await _userService.FollowUserAsync(currentUserId, id);
-			return Ok(new { message = $"Followed {id}" });
+			try
+			{
+				var currentUserId = GetCurrentUserId() ?? string.Empty;
+				await _userService.FollowUserAsync(currentUserId, id);
+				return Ok(new { message = $"Followed {id}" });
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+			catch (InvalidOperationException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		}
 
 		[HttpDelete("unfollow/{id}")]
-		public async Task<ActionResult<object>> Unfollow(string id, [FromQuery] string currentUserId)
+		public async Task<ActionResult<object>> Unfollow(string id)
 		{
-			await _userService.UnfollowUserAsync(currentUserId, id);
-			return Ok(new { message = $"Unfollowed {id}" });
+			try
+			{
+				var currentUserId = GetCurrentUserId() ?? string.Empty;
+				await _userService.UnfollowUserAsync(currentUserId, id);
+				return Ok(new { message = $"Unfollowed {id}" });
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+			catch (InvalidOperationException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		}
 
 		[HttpGet("search")]
-		public async Task<ActionResult<List<UserSearchDTO>>> Search([FromQuery] string q, [FromQuery] string currentUserId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+		public async Task<ActionResult<List<UserSearchDTO>>> Search([FromQuery] string query, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
 		{
-			var results = await _userService.SearchUsersAsync(q, currentUserId, page, pageSize);
-			return Ok(results);
+			try
+			{
+				var currentUserId = GetCurrentUserId() ?? string.Empty;
+				var results = await _userService.SearchUsersAsync(query, currentUserId, page, pageSize);
+				return Ok(results);
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+			catch (Exception ex)
+			{
+				// Catch any unexpected exceptions and return a 500 with a generic message
+				return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while searching users." });
+			}
 		}
 
 		[HttpGet("{id}/followers")]
-		public async Task<ActionResult<List<UserSearchDTO>>> GetFollowers(string id, [FromQuery] string currentUserId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+		public async Task<ActionResult<List<UserSearchDTO>>> GetFollowers(string id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
 		{
-			var results = await _userService.GetFollowersAsync(id, currentUserId, page, pageSize);
-			return Ok(results);
+			try
+			{
+				var currentUserId = GetCurrentUserId() ?? string.Empty;
+				var results = await _userService.GetFollowersAsync(id, currentUserId, page, pageSize);
+				return Ok(results);
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		}
 
 		[HttpGet("{id}/following")]
-		public async Task<ActionResult<List<UserSearchDTO>>> GetFollowing(string id, [FromQuery] string currentUserId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+		public async Task<ActionResult<List<UserSearchDTO>>> GetFollowing(string id, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
 		{
-			var results = await _userService.GetFollowingAsync(id, currentUserId, page, pageSize);
-			return Ok(results);
+			try
+			{
+				var currentUserId = GetCurrentUserId() ?? string.Empty;
+				var results = await _userService.GetFollowingAsync(id, currentUserId, page, pageSize);
+				return Ok(results);
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		}
 	}
 }

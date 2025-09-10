@@ -21,8 +21,12 @@ namespace user_service.Services
 			_cloudinaryService = cloudinaryService;
 		}
 
+		private bool IsValidObjectId(string id) => MongoDB.Bson.ObjectId.TryParse(id, out _);
+
 		public async Task<UserProfileDTO> GetUserProfileAsync(string userId, string currentUserId)
 		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			if (!IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
 			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null)
 				throw new KeyNotFoundException("User not found");
@@ -59,6 +63,7 @@ namespace user_service.Services
 
 		public async Task<UserProfileDTO> UpdateUserProfileAsync(string userId, UpdateUserProfileDTO updateDto)
 		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null)
 				throw new KeyNotFoundException("User not found");
@@ -90,6 +95,7 @@ namespace user_service.Services
 
 		public async Task<string> UpdateAvatarAsync(string userId, IFormFile file)
 		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null)
 				throw new KeyNotFoundException("User not found");
@@ -105,6 +111,8 @@ namespace user_service.Services
 
 		public async Task<bool> FollowUserAsync(string followerId, string followingId)
 		{
+			if (!IsValidObjectId(followerId)) throw new ArgumentException("Invalid follower ID format.");
+			if (!IsValidObjectId(followingId)) throw new ArgumentException("Invalid following ID format.");
 			if (followerId == followingId)
 				throw new ArgumentException("Cannot follow yourself.");
 
@@ -140,6 +148,8 @@ namespace user_service.Services
 
 		public async Task<bool> UnfollowUserAsync(string followerId, string followingId)
 		{
+			if (!IsValidObjectId(followerId)) throw new ArgumentException("Invalid follower ID format.");
+			if (!IsValidObjectId(followingId)) throw new ArgumentException("Invalid following ID format.");
 			var follower = await _dbContext.Users.Find(u => u.Id == followerId).FirstOrDefaultAsync();
 			var following = await _dbContext.Users.Find(u => u.Id == followingId).FirstOrDefaultAsync();
 
@@ -166,6 +176,7 @@ namespace user_service.Services
 
 		public async Task<List<UserSearchDTO>> SearchUsersAsync(string query, string currentUserId, int page, int pageSize)
 		{
+			if (!string.IsNullOrEmpty(currentUserId) && !IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
 			var filter = Builders<User>.Filter.Text(query);
 			var users = await _dbContext.Users.Find(filter)
 											.Skip((page - 1) * pageSize)
@@ -192,6 +203,8 @@ namespace user_service.Services
 
 		public async Task<List<UserSearchDTO>> GetFollowersAsync(string userId, string currentUserId, int page, int pageSize)
 		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			if (!string.IsNullOrEmpty(currentUserId) && !IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
 			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null) throw new KeyNotFoundException("User not found.");
 
@@ -215,6 +228,8 @@ namespace user_service.Services
 
 		public async Task<List<UserSearchDTO>> GetFollowingAsync(string userId, string currentUserId, int page, int pageSize)
 		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			if (!string.IsNullOrEmpty(currentUserId) && !IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
 			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null) throw new KeyNotFoundException("User not found.");
 
@@ -238,11 +253,13 @@ namespace user_service.Services
 
 		public async Task<bool> UserExistsAsync(string userId)
 		{
+			if (!IsValidObjectId(userId)) return false; // Invalid format, so user can't exist
 			return await _dbContext.Users.Find(u => u.Id == userId).AnyAsync();
 		}
 
 		public async Task<User> GetUserByIdAsync(string userId)
 		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 			return await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync()
 				?? throw new KeyNotFoundException("User not found");
 		}

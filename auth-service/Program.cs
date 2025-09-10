@@ -23,14 +23,18 @@ builder.Services.AddCors(options =>
 // MongoDB
 builder.Services.AddSingleton<IMongoClient>(_ =>
 {
-	var connectionString = builder.Configuration.GetConnectionString("MongoDb")
-		?? "mongodb://localhost:27017";
+	// Use the same key casing as other services if present
+	var connectionString = builder.Configuration.GetConnectionString("MongoDB")
+		?? builder.Configuration.GetConnectionString("MongoDb")
+		?? "mongodb+srv://yusufovamina:Fh9nz7EKJuPZHViL@cluster.9qjuc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster";
 	return new MongoClient(connectionString);
 });
 builder.Services.AddSingleton(provider =>
 {
 	var client = provider.GetRequiredService<IMongoClient>();
-	var dbName = builder.Configuration.GetValue<string>("MongoDb:Database") ?? "wishlistapp";
+	var dbName = builder.Configuration.GetValue<string>("MongoDB:Database")
+		?? builder.Configuration.GetValue<string>("MongoDb:Database")
+		?? "WishlistApp";
 	return client.GetDatabase(dbName);
 });
 builder.Services.AddSingleton<MongoDbContext>();
@@ -38,6 +42,9 @@ builder.Services.AddSingleton<MongoDbContext>();
 // Auth + email services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+
+// RabbitMQ RPC server for Auth
+builder.Services.AddHostedService<AuthRpcServer>();
 
 var app = builder.Build();
 

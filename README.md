@@ -52,5 +52,5 @@ A sleek, modern wishlist app built with React (frontend) and .NET (backend), fea
 This project is open-source and available under the MIT License.
 
 ### ✨ Credits
-💡 Developed with ❤️ by @yusufovamina
+💡 Developed with ❤️ by @yusufovamina and @Newalgabe
 

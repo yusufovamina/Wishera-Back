@@ -1,4 +1,4 @@
-namespace WishlistApp.DTO
+namespace WisheraApp.DTO
 {
     public class GiftUpdateDto
     {

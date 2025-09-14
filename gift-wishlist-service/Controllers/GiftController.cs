@@ -2,8 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using gift_wishlist_service.Services;
-using WishlistApp.Models;
-using WishlistApp.DTO;
+using WisheraApp.Models;
+using WisheraApp.DTO;
 
 namespace gift_wishlist_service.Controllers
 {

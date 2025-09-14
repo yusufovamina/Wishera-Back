@@ -1,5 +1,5 @@
 using MongoDB.Driver;
-using WishlistApp.Models;
+using WisheraApp.Models;
 
 namespace user_service.Services
 {

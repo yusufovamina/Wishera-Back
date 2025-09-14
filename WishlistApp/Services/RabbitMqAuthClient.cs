@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
-namespace WishlistApp.Services
+namespace WisheraApp.Services
 {
     public interface IRabbitMqAuthClient
     {

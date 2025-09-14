@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 using System;
 using System.Collections.Generic;
 
-namespace WishlistApp.Models
+namespace WisheraApp.Models
 {
     public class Wishlist
     {

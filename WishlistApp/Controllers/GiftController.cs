@@ -3,12 +3,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
-using WishlistApp.Models;
-using WishlistApp.DTO;
+using WisheraApp.Models;
+using WisheraApp.DTO;
 using System.Security.Claims;
-using WishlistApp.Services;
+using WisheraApp.Services;
 
-namespace WishlistApp.Controllers
+namespace WisheraApp.Controllers
 {
     [Authorize]
     [ApiController]

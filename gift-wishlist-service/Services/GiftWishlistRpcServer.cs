@@ -3,8 +3,8 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WishlistApp.DTO;
-using WishlistApp.Models;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 using MongoDB.Driver;
 
 namespace gift_wishlist_service.Services
@@ -12,7 +12,7 @@ namespace gift_wishlist_service.Services
     public class GiftWishlistRpcServer : IHostedService, IDisposable
     {
         private readonly IConfiguration _configuration;
-        private readonly WishlistApp.Services.IWishlistService _wishlistService;
+        private readonly WisheraApp.Services.IWishlistService _wishlistService;
         private readonly gift_wishlist_service.Services.ICloudinaryService _cloudinaryService;
         private readonly gift_wishlist_service.Services.MongoDbContext _dbContext;
         private IConnection? _connection;
@@ -24,7 +24,7 @@ namespace gift_wishlist_service.Services
 
         public GiftWishlistRpcServer(
             IConfiguration configuration, 
-            WishlistApp.Services.IWishlistService wishlistService,
+            WisheraApp.Services.IWishlistService wishlistService,
             gift_wishlist_service.Services.ICloudinaryService cloudinaryService,
             gift_wishlist_service.Services.MongoDbContext dbContext)
         {
@@ -261,7 +261,7 @@ namespace gift_wishlist_service.Services
                     
                     var filter = MongoDB.Driver.Builders<Gift>.Filter.Or(
                         MongoDB.Driver.Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds),
-                        MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.WishlistId, (string)null)
+                        MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.WishlistId, (string?)null)
                     );
                     
                     if (!string.IsNullOrEmpty(getUserWishlistData.Category))

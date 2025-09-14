@@ -3,10 +3,10 @@ using MongoDB.Driver;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using WishlistApp.DTO;
-using WishlistApp.Models;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 
-namespace WishlistApp.Services
+namespace WisheraApp.Services
 {
     public interface IAuthService
     {

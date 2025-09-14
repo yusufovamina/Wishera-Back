@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http;
 
-namespace WishlistApp.DTO
+namespace WisheraApp.DTO
 {
     public class GiftCreateDto
     {

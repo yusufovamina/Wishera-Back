@@ -3,7 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WishlistApp.DTO;
+using WisheraApp.DTO;
 
 namespace user_service.Services
 {

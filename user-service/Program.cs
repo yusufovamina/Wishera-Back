@@ -6,8 +6,8 @@ using System.Text;
 using user_service.Services;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
-using WishlistApp.DTO;
-using WishlistApp.Models;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,7 +59,8 @@ builder.Services
 			ValidateIssuerSigningKey = true,
 			IssuerSigningKey = new SymmetricSecurityKey(
 				Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured"))),
-			ValidateIssuer = false,
+			ValidateIssuer = true,
+			ValidIssuer = builder.Configuration["Jwt:Issuer"],
 			ValidateAudience = false,
 			ValidateLifetime = true,
 			ClockSkew = TimeSpan.Zero

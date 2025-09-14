@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using MongoDB.Driver;
-using WishlistApp.Models;
-using WishlistApp.DTO;
+using WisheraApp.Models;
+using WisheraApp.DTO;
 
 namespace gift_wishlist_service.Services
 {
@@ -110,7 +110,7 @@ namespace gift_wishlist_service.Services
             var wishlistIds = userWishlistsList.Select(w => w.Id).ToList();
             var filter = Builders<Gift>.Filter.Or(
                 Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds),
-                Builders<Gift>.Filter.Eq(g => g.WishlistId, (string)null)
+                Builders<Gift>.Filter.Eq(g => g.WishlistId, (string?)null)
             );
             if (!string.IsNullOrEmpty(category))
             {

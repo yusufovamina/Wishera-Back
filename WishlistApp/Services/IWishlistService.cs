@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Http;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using WishlistApp.DTO;
+using WisheraApp.DTO;
 
-namespace WishlistApp.Services
+namespace WisheraApp.Services
 {
     public interface IWishlistService
     {
@@ -20,6 +20,7 @@ namespace WishlistApp.Services
         Task<bool> DeleteCommentAsync(string commentId, string userId);
         Task<List<CommentDTO>> GetCommentsAsync(string wishlistId, int page, int pageSize);
         Task<string> UploadItemImageAsync(IFormFile file);
+        Task<int> CleanupCorruptedWishlistsAsync();
     }
 }
 

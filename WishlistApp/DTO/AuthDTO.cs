@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace WishlistApp.DTO
+namespace WisheraApp.DTO
 {
     public class RegisterDTO
     {

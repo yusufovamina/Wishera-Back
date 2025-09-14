@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using WishlistApp.DTO;
+using WisheraApp.DTO;
 using gift_wishlist_service.Services;
 
 namespace gift_wishlist_service.Controllers
@@ -11,9 +11,9 @@ namespace gift_wishlist_service.Controllers
     [Route("api/[controller]")]
     public class WishlistsController : ControllerBase
     {
-        private readonly WishlistApp.Services.IWishlistService _wishlistService;
+        private readonly WisheraApp.Services.IWishlistService _wishlistService;
 
-        public WishlistsController(WishlistApp.Services.IWishlistService wishlistService)
+        public WishlistsController(WisheraApp.Services.IWishlistService wishlistService)
         {
             _wishlistService = wishlistService;
         }
@@ -37,6 +37,8 @@ namespace gift_wishlist_service.Controllers
             try
             {
                 var currentUserId = GetCurrentUserId();
+                Console.WriteLine($"GetFeed called with currentUserId: '{currentUserId}'");
+                
                 if (string.IsNullOrEmpty(currentUserId))
                 {
                     // Return public-only feed if user claim is missing
@@ -49,6 +51,7 @@ namespace gift_wishlist_service.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine($"GetFeed error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 // Fail-soft to avoid breaking the dashboard
                 return Ok(new List<WishlistFeedDTO>());
             }
@@ -71,6 +74,20 @@ namespace gift_wishlist_service.Controllers
             catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "User not found" });
+            }
+        }
+
+        [HttpPost("cleanup-corrupted")]
+        public async Task<ActionResult> CleanupCorruptedWishlists()
+        {
+            try
+            {
+                var deletedCount = await _wishlistService.CleanupCorruptedWishlistsAsync();
+                return Ok(new { message = $"Cleaned up {deletedCount} corrupted wishlists" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
         }
 

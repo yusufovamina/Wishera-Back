@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace WishlistApp.DTO
+namespace WisheraApp.DTO
 {
     // Static categories for consistency across the application
     public static class WishlistCategories

@@ -1,4 +1,4 @@
-# 🚀 Инструкции по запуску Wishlist Web App
+# 🚀 Инструкции по запуску Wishera Web App
 
 ## 📋 Предварительные требования
 
@@ -60,7 +60,7 @@ cd chat-service-dotnet
 dotnet run --urls http://localhost:5000
 ```
 
-#### 5. Main Wishlist App (Порт 5155)
+#### 5. Main Wishera App (Порт 5155)
 ```bash
 cd WishlistApp
 dotnet run --urls http://localhost:5155
@@ -74,7 +74,7 @@ dotnet run --urls http://localhost:5155
 | User Service | http://localhost:5220 | Управление пользователями |
 | Gift Wishlist Service | http://localhost:5221 | Управление подарками и списками желаний |
 | Chat Service | http://localhost:5000 | Чат функциональность |
-| Main Wishlist App | http://localhost:5155 | Основное приложение (API Gateway) |
+| Main Wishera App | http://localhost:5155 | Основное приложение (API Gateway) |
 
 ## 🔍 Проверка работоспособности
 

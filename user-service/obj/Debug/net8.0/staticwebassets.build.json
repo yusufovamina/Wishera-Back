@@ -1,13 +1,13 @@
 {
   "Version": 1,
-  "Hash": "ToxbbRNO05WqeTKJ1MECH8BqXGpbDirppO7pj7L0Zwo=",
+  "Hash": "paPyGuPmSOeoqp9Ucwx0Zi82M+x+fiUCPgxNG09Y2aU=",
   "Source": "user-service",
   "BasePath": "_content/user-service",
   "Mode": "Default",
   "ManifestType": "Build",
   "ReferencedProjectsConfiguration": [
     {
-      "Identity": "C:\\Users\\yusufova_a\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj",
+      "Identity": "C:\\Users\\newal\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj",
       "Version": 2,
       "Source": "WishlistApp",
       "GetPublishAssetsTargets": "ComputeReferencedStaticWebAssetsPublishManifest;GetCurrentProjectPublishStaticWebAssetItems",
@@ -19,6 +19,5 @@
     }
   ],
   "DiscoveryPatterns": [],
-  "Assets": [],
-  "Endpoints": []
+  "Assets": []
 }

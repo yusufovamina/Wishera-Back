@@ -3,9 +3,9 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WishlistApp.DTO;
+using WisheraApp.DTO;
 
-namespace WishlistApp.Services
+namespace WisheraApp.Services
 {
     public interface IUserServiceClient
     {

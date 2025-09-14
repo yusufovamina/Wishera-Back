@@ -1,6 +1,6 @@
 using MongoDB.Driver;
-using WishlistApp.DTO;
-using WishlistApp.Models;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CloudinaryDotNet;
@@ -21,7 +21,7 @@ namespace gift_wishlist_service.Services
 
    
 
-    public class WishlistService : WishlistApp.Services.IWishlistService
+    public class WishlistService : WisheraApp.Services.IWishlistService
     {
         private readonly MongoDbContext _dbContext;
         private readonly ICloudinaryService _cloudinaryService;
@@ -48,8 +48,8 @@ namespace gift_wishlist_service.Services
             {
                 UserId = userId,
                 Title = createDto.Title,
-                Description = createDto.Description,
-                Category = createDto.Category,
+                Description = createDto.Description ?? string.Empty,
+                Category = createDto.Category ?? string.Empty,
                 IsPublic = createDto.IsPublic,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -72,7 +72,12 @@ namespace gift_wishlist_service.Services
                 Category = wishlist.Category,
                 IsPublic = wishlist.IsPublic,
                 CreatedAt = wishlist.CreatedAt,
-                UpdatedAt = wishlist.UpdatedAt
+                UpdatedAt = wishlist.UpdatedAt,
+                Items = new List<WishlistItemDTO>(), // Empty items for new wishlist
+                LikeCount = 0,
+                CommentCount = 0,
+                IsLiked = false,
+                IsOwner = true // Creator is always the owner
             };
         }
 
@@ -94,6 +99,25 @@ namespace gift_wishlist_service.Services
                 throw new UnauthorizedAccessException("You do not have permission to view this wishlist.");
             }
 
+            // Build items from Gifts collection assigned to this wishlist
+            var gifts = await _dbContext.Gifts.Find(g => g.WishlistId == wishlist.Id).ToListAsync();
+            var items = gifts.Select(g => new WishlistItemDTO
+            {
+                Title = g.Name,
+                Description = null,
+                ImageUrl = g.ImageUrl,
+                Category = g.Category,
+                Price = g.Price,
+                Url = null,
+                GiftId = g.Id
+            }).ToList();
+
+            // Aggregate likes and comments
+            var likeCount = (int)await _dbContext.Likes.CountDocumentsAsync(l => l.WishlistId == id);
+            var commentCount = (int)await _dbContext.Comments.CountDocumentsAsync(c => c.WishlistId == id);
+            var isLiked = !string.IsNullOrEmpty(currentUserId)
+                && await _dbContext.Likes.Find(l => l.WishlistId == id && l.UserId == currentUserId).AnyAsync();
+
             return new WishlistResponseDTO
             {
                 Id = wishlist.Id,
@@ -104,8 +128,13 @@ namespace gift_wishlist_service.Services
                 IsPublic = wishlist.IsPublic,
                 CreatedAt = wishlist.CreatedAt,
                 UpdatedAt = wishlist.UpdatedAt,
-                Username = user.Username, // Include username
-                AvatarUrl = user.AvatarUrl // Include avatar
+                Username = user.Username,
+                AvatarUrl = user.AvatarUrl,
+                Items = items,
+                LikeCount = likeCount,
+                CommentCount = commentCount,
+                IsLiked = isLiked,
+                IsOwner = wishlist.UserId == currentUserId
             };
         }
 
@@ -168,10 +197,21 @@ namespace gift_wishlist_service.Services
             if (user == null) throw new KeyNotFoundException("User not found.");
 
             var filterBuilder = Builders<Wishlist>.Filter;
-            var filter = filterBuilder.Eq(w => w.UserId, userId);
+            // Filter out wishlists with invalid UserIds to prevent ObjectId errors
+            var filter = filterBuilder.And(
+                filterBuilder.Eq(w => w.UserId, userId),
+                filterBuilder.Exists(w => w.UserId),
+                filterBuilder.Ne(w => w.UserId, null),
+                filterBuilder.Ne(w => w.UserId, ""),
+                filterBuilder.Not(filterBuilder.Regex(w => w.UserId, new MongoDB.Bson.BsonRegularExpression("^[a-zA-Z]+$"))) // Exclude usernames like 'Sakyu'
+            );
 
             // If not the owner and not public, apply privacy filter
-            if (userId != currentUserId && !(user.AllowedViewerIds?.Contains(currentUserId) ?? false))
+            // Also validate that currentUserId is a valid ObjectId before checking allowed viewers
+            var isValidCurrentUserId = !string.IsNullOrEmpty(currentUserId) && ObjectIdValidator.IsValidObjectId(currentUserId);
+            var isAllowedViewer = isValidCurrentUserId && (user.AllowedViewerIds?.Contains(currentUserId) ?? false);
+            
+            if (userId != currentUserId && !isAllowedViewer)
             {
                 filter &= filterBuilder.Eq(w => w.IsPublic, true);
             }
@@ -185,6 +225,13 @@ namespace gift_wishlist_service.Services
             var wishlistDTOs = new List<WishlistFeedDTO>();
             foreach (var w in wishlists)
             {
+                // Validate wishlist UserId before using it
+                if (!ObjectIdValidator.IsValidObjectId(w.UserId))
+                {
+                    Console.WriteLine($"Skipping wishlist {w.Id} with invalid UserId: '{w.UserId}'");
+                    continue;
+                }
+                
                 wishlistDTOs.Add(new WishlistFeedDTO
                 {
                     Id = w.Id,
@@ -203,29 +250,83 @@ namespace gift_wishlist_service.Services
 
         public async Task<List<WishlistFeedDTO>> GetFeedAsync(string currentUserId, int page, int pageSize)
         {
+            // Validate currentUserId format before using it
+            if (!string.IsNullOrEmpty(currentUserId) && !ObjectIdValidator.IsValidObjectId(currentUserId))
+            {
+                // If currentUserId is not a valid ObjectId (e.g., it's a username), 
+                // just return public feed without user-specific data
+                Console.WriteLine($"Invalid user ID format in feed: '{currentUserId}' - treating as anonymous user");
+                currentUserId = string.Empty;
+            }
+
             var user = await _dbContext.Users.Find(u => u.Id == currentUserId).FirstOrDefaultAsync();
             // If user not found, proceed with public feed only
             var followingIds = user?.FollowingIds ?? new List<string>();
+            
+            // Filter out invalid ObjectIds to prevent MongoDB errors
+            var validFollowingIds = followingIds.Where(id => ObjectIdValidator.IsValidObjectId(id)).ToList();
+            
+            // Log any invalid IDs found for debugging
+            var invalidIds = followingIds.Where(id => !ObjectIdValidator.IsValidObjectId(id)).ToList();
+            if (invalidIds.Any())
+            {
+                Console.WriteLine($"Found invalid ObjectIds in following list: {string.Join(", ", invalidIds)}");
+            }
+            
             if (!string.IsNullOrEmpty(currentUserId))
             {
-                followingIds.Add(currentUserId); // Include current user's own wishlists when possible
+                validFollowingIds.Add(currentUserId); // Include current user's own wishlists when possible
             }
 
             var filterBuilder = Builders<Wishlist>.Filter;
-            var filter = filterBuilder.In(w => w.UserId, followingIds);
-            filter |= filterBuilder.Eq(w => w.IsPublic, true);
+            // Show all public wishlists from all users, plus private wishlists from people you follow
+            // Filter out wishlists with invalid UserIds to prevent ObjectId errors
+            var filter = filterBuilder.And(
+                filterBuilder.Eq(w => w.IsPublic, true),
+                filterBuilder.Exists(w => w.UserId),
+                filterBuilder.Ne(w => w.UserId, null),
+                filterBuilder.Ne(w => w.UserId, ""),
+                filterBuilder.Not(filterBuilder.Regex(w => w.UserId, new MongoDB.Bson.BsonRegularExpression("^[a-zA-Z]+$"))) // Exclude usernames like 'Sakyu'
+            );
+            
+            // Also include private wishlists from people you follow (if any)
+            if (validFollowingIds.Any())
+            {
+                var privateFromFollowing = filterBuilder.And(
+                    filterBuilder.In(w => w.UserId, validFollowingIds),
+                    filterBuilder.Eq(w => w.IsPublic, false)
+                );
+                filter |= privateFromFollowing;
+            }
 
             var feedWishlists = await _dbContext.Wishlists.Find(filter)
                                              .SortByDescending(w => w.CreatedAt)
                                              .Skip((page - 1) * pageSize)
                                              .Limit(pageSize)
                                              .ToListAsync();
+                                             
+            Console.WriteLine($"Found {feedWishlists.Count} wishlists for feed");
+            
+            // Log any corrupted wishlists found for debugging
+            await LogCorruptedWishlistsAsync();
 
             var feedDTOs = new List<WishlistFeedDTO>();
             foreach (var w in feedWishlists)
             {
+                // Validate wishlist UserId before querying Users collection
+                if (!ObjectIdValidator.IsValidObjectId(w.UserId))
+                {
+                    Console.WriteLine($"Skipping wishlist {w.Id} with invalid UserId: '{w.UserId}'");
+                    continue;
+                }
+                
                 var owner = await _dbContext.Users.Find(u => u.Id == w.UserId).FirstOrDefaultAsync();
                 if (owner == null) continue; // Skip if owner not found
+                var likeCount = (int)await _dbContext.Likes.CountDocumentsAsync(l => l.WishlistId == w.Id);
+                var commentCount = (int)await _dbContext.Comments.CountDocumentsAsync(c => c.WishlistId == w.Id);
+                var isLiked = !string.IsNullOrEmpty(currentUserId)
+                    && await _dbContext.Likes.Find(l => l.WishlistId == w.Id && l.UserId == currentUserId).AnyAsync();
+
                 feedDTOs.Add(new WishlistFeedDTO
                 {
                     Id = w.Id,
@@ -236,7 +337,10 @@ namespace gift_wishlist_service.Services
                     IsPublic = w.IsPublic,
                     CreatedAt = w.CreatedAt,
                     Username = owner.Username,
-                    AvatarUrl = owner.AvatarUrl
+                    AvatarUrl = owner.AvatarUrl,
+                    LikeCount = likeCount,
+                    CommentCount = commentCount,
+                    IsLiked = isLiked
                 });
             }
             return feedDTOs;
@@ -322,8 +426,8 @@ namespace gift_wishlist_service.Services
                 Id = comment.Id,
                 WishlistId = comment.WishlistId,
                 UserId = comment.UserId,
-                Username = user?.Username, // Null-conditional operator
-                AvatarUrl = user?.AvatarUrl, // Null-conditional operator
+                Username = user?.Username ?? string.Empty,
+                AvatarUrl = user?.AvatarUrl,
                 Text = comment.Text,
                 CreatedAt = comment.CreatedAt,
                 UpdatedAt = comment.UpdatedAt
@@ -358,7 +462,7 @@ namespace gift_wishlist_service.Services
                     Id = comment.Id,
                     WishlistId = comment.WishlistId,
                     UserId = comment.UserId,
-                    Username = user?.Username,
+                    Username = user?.Username ?? string.Empty,
                     AvatarUrl = user?.AvatarUrl,
                     Text = comment.Text,
                     CreatedAt = comment.CreatedAt,
@@ -371,6 +475,80 @@ namespace gift_wishlist_service.Services
         public async Task<string> UploadItemImageAsync(IFormFile file)
         {
             return await _cloudinaryService.UploadImageAsync(file);
+        }
+
+        private async Task LogCorruptedWishlistsAsync()
+        {
+            try
+            {
+                // Find wishlists with invalid UserIds (usernames instead of ObjectIds)
+                // We need to fetch all wishlists and filter in C# since ObjectIdValidator can't be translated to MongoDB
+                var allWishlists = await _dbContext.Wishlists.Find(_ => true).ToListAsync();
+                var corruptedWishlists = allWishlists.Where(w => !ObjectIdValidator.IsValidObjectId(w.UserId)).ToList();
+                
+                if (corruptedWishlists.Any())
+                {
+                    Console.WriteLine($"Found {corruptedWishlists.Count} corrupted wishlists with invalid UserIds:");
+                    foreach (var w in corruptedWishlists.Take(10)) // Log first 10
+                    {
+                        Console.WriteLine($"  - Wishlist {w.Id}: UserId='{w.UserId}', Title='{w.Title}'");
+                    }
+                    if (corruptedWishlists.Count > 10)
+                    {
+                        Console.WriteLine($"  ... and {corruptedWishlists.Count - 10} more");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error logging corrupted wishlists: {ex.Message}");
+            }
+        }
+
+        public async Task<int> CleanupCorruptedWishlistsAsync()
+        {
+            try
+            {
+                // Find and delete wishlists with invalid UserIds
+                // We need to fetch all wishlists and filter in C# since ObjectIdValidator can't be translated to MongoDB
+                var allWishlists = await _dbContext.Wishlists.Find(_ => true).ToListAsync();
+                var corruptedWishlists = allWishlists.Where(w => !ObjectIdValidator.IsValidObjectId(w.UserId)).ToList();
+                
+                if (!corruptedWishlists.Any())
+                {
+                    Console.WriteLine("No corrupted wishlists found.");
+                    return 0;
+                }
+
+                Console.WriteLine($"Cleaning up {corruptedWishlists.Count} corrupted wishlists...");
+                
+                var deletedCount = 0;
+                foreach (var wishlist in corruptedWishlists)
+                {
+                    try
+                    {
+                        // Delete the corrupted wishlist
+                        var deleteResult = await _dbContext.Wishlists.DeleteOneAsync(w => w.Id == wishlist.Id);
+                        if (deleteResult.IsAcknowledged && deleteResult.DeletedCount > 0)
+                        {
+                            deletedCount++;
+                            Console.WriteLine($"Deleted corrupted wishlist: {wishlist.Id} (UserId: '{wishlist.UserId}')");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error deleting wishlist {wishlist.Id}: {ex.Message}");
+                    }
+                }
+                
+                Console.WriteLine($"Successfully cleaned up {deletedCount} corrupted wishlists.");
+                return deletedCount;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error during cleanup: {ex.Message}");
+                return 0;
+            }
         }
     }
 }

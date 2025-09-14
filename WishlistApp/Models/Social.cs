@@ -2,7 +2,7 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using System;
 
-namespace WishlistApp.Models
+namespace WisheraApp.Models
 {
     public class Like
     {

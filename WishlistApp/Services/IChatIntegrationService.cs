@@ -1,4 +1,4 @@
-namespace WishlistApp.Services
+namespace WisheraApp.Services
 {
     public interface IChatIntegrationService
     {

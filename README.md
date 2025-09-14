@@ -1,4 +1,4 @@
-# 🎁 Wishlist App – The Ultimate Gift Wishlist Manager
+# 🎁 Wishera – The Ultimate Gift Wishlist Manager
 A sleek, modern wishlist app built with React (frontend) and .NET (backend), featuring authentication, gift reservations, and a beautiful **Glassmorphism UI**.
 
 ## 🌟 Features

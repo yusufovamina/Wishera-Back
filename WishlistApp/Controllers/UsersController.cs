@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using WishlistApp.DTO;
-using WishlistApp.Services;
+using WisheraApp.DTO;
+using WisheraApp.Services;
 
-namespace WishlistApp.Controllers
+namespace WisheraApp.Controllers
 {
     [Authorize]
     [ApiController]

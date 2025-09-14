@@ -70,11 +70,11 @@ services:
     ports:
       - "5400:5400"
 
-  wishlist-app:
+  wishera-app:
     build:
       context: ./WishlistApp
       dockerfile: Dockerfile
-    container_name: wishlist-app
+    container_name: wishera-app
     depends_on:
       - rabbitmq
     environment:

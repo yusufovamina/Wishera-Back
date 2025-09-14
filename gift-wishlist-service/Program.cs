@@ -4,18 +4,17 @@ using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using System.Text;
 using gift_wishlist_service.Services;
-using WishlistApp.DTO;
-using WishlistApp.Models;
+using WisheraApp.DTO;
+using WisheraApp.Models;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers().ConfigureApplicationPartManager(apm =>
 {
-    var orphanPart = apm.ApplicationParts.FirstOrDefault(p => string.Equals(p.Name, "WishlistApp", StringComparison.OrdinalIgnoreCase));
-    if (orphanPart != null)
-    {
-        apm.ApplicationParts.Remove(orphanPart);
-    }
+    apm.ApplicationParts.Clear();
+    apm.ApplicationParts.Add(new AssemblyPart(typeof(Program).Assembly));
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -48,7 +47,8 @@ builder.Services
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(
                 Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured"))),
-            ValidateIssuer = false,
+            ValidateIssuer = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidateAudience = false,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
@@ -56,7 +56,7 @@ builder.Services
     });
 
 // Register core services (match hosted service singleton lifetime)
-builder.Services.AddSingleton<WishlistApp.Services.IWishlistService, WishlistService>();
+builder.Services.AddSingleton<WisheraApp.Services.IWishlistService, WishlistService>();
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 builder.Services.AddSingleton<IGiftApiService, GiftApiService>();
 

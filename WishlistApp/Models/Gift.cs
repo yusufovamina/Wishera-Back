@@ -2,7 +2,7 @@ using System;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace WishlistApp.Models
+namespace WisheraApp.Models
 {
     public class Gift
     {

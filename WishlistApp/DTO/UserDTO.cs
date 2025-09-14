@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace WishlistApp.DTO
+namespace WisheraApp.DTO
 {
     public class UserProfileDTO
     {
@@ -36,5 +36,6 @@ namespace WishlistApp.DTO
         public required string Username { get; set; }
         public string? AvatarUrl { get; set; }
         public bool IsFollowing { get; set; }
+        public int MutualFriendsCount { get; set; }
     }
 } 

@@ -1,10 +1,10 @@
 using MongoDB.Driver;
-using WishlistApp.Models;
+using WisheraApp.Models;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CloudinaryDotNet;
-using WishlistApp.DTO;
+using WisheraApp.DTO;
 using Microsoft.Extensions.Configuration;
 using BCrypt.Net;
 
@@ -177,7 +177,9 @@ namespace user_service.Services
 		public async Task<List<UserSearchDTO>> SearchUsersAsync(string query, string currentUserId, int page, int pageSize)
 		{
 			if (!string.IsNullOrEmpty(currentUserId) && !IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
-			var filter = Builders<User>.Filter.Text(query);
+			
+			// Use regex search instead of text search to avoid requiring text index
+			var filter = Builders<User>.Filter.Regex(u => u.Username, new MongoDB.Bson.BsonRegularExpression(query, "i"));
 			var users = await _dbContext.Users.Find(filter)
 											.Skip((page - 1) * pageSize)
 											.Limit(pageSize)
@@ -195,7 +197,8 @@ namespace user_service.Services
 					Id = user.Id,
 					Username = user.Username,
 					AvatarUrl = user.AvatarUrl,
-					IsFollowing = isFollowing
+					IsFollowing = isFollowing,
+					MutualFriendsCount = 0 // Not calculated for search results
 				});
 			}
 			return searchResults;
@@ -220,7 +223,8 @@ namespace user_service.Services
 					Id = f.Id,
 					Username = f.Username,
 					AvatarUrl = f.AvatarUrl,
-					IsFollowing = currentUserId != null && f.FollowerIds.Contains(currentUserId)
+					IsFollowing = currentUserId != null && f.FollowerIds.Contains(currentUserId),
+					MutualFriendsCount = 0 // Not calculated for followers
 				});
 			}
 			return followerDTOs;
@@ -245,10 +249,60 @@ namespace user_service.Services
 					Id = f.Id,
 					Username = f.Username,
 					AvatarUrl = f.AvatarUrl,
-					IsFollowing = currentUserId != null && f.FollowerIds.Contains(currentUserId)
+					IsFollowing = currentUserId != null && f.FollowerIds.Contains(currentUserId),
+					MutualFriendsCount = 0 // Not calculated for following
 				});
 			}
 			return followingDTOs;
+		}
+
+		public async Task<List<UserSearchDTO>> GetSuggestedUsersAsync(string currentUserId, int page, int pageSize)
+		{
+			if (!IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
+			
+			var currentUser = await _dbContext.Users.Find(u => u.Id == currentUserId).FirstOrDefaultAsync();
+			if (currentUser == null) throw new KeyNotFoundException("Current user not found.");
+
+			// Get users that the current user is not already following
+			var followingIds = currentUser.FollowingIds ?? new List<string>();
+			var excludeIds = new List<string>(followingIds) { currentUserId }; // Exclude self and already following
+
+			// Find users who are not in the exclude list
+			var filter = Builders<User>.Filter.And(
+				Builders<User>.Filter.Nin(u => u.Id, excludeIds),
+				Builders<User>.Filter.Eq(u => u.IsPrivate, false) // Only suggest public users
+			);
+
+			var suggestedUsers = await _dbContext.Users.Find(filter)
+				.Skip((page - 1) * pageSize)
+				.Limit(pageSize)
+				.ToListAsync();
+
+			var suggestedDTOs = new List<UserSearchDTO>();
+			foreach (var user in suggestedUsers)
+			{
+				// Calculate mutual friends count
+				var mutualFriendsCount = 0;
+				if (currentUser.FollowingIds != null && user.FollowerIds != null)
+				{
+					mutualFriendsCount = currentUser.FollowingIds.Intersect(user.FollowerIds).Count();
+				}
+
+				suggestedDTOs.Add(new UserSearchDTO
+				{
+					Id = user.Id,
+					Username = user.Username,
+					AvatarUrl = user.AvatarUrl,
+					IsFollowing = false, // They're not following since we excluded them
+					MutualFriendsCount = mutualFriendsCount
+				});
+			}
+
+			// Sort by mutual friends count (descending) and then by username
+			return suggestedDTOs.OrderByDescending(u => {
+				var user = suggestedUsers.First(su => su.Id == u.Id);
+				return currentUser.FollowingIds?.Intersect(user.FollowerIds ?? new List<string>()).Count() ?? 0;
+			}).ThenBy(u => u.Username).ToList();
 		}
 
 		public async Task<bool> UserExistsAsync(string userId)

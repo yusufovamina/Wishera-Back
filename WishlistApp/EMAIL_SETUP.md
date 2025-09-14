@@ -1,6 +1,6 @@
-# Email Setup Guide for Wishlist App
+# Email Setup Guide for Wishera
 
-This guide will help you set up Gmail SMTP to send emails from your Wishlist App.
+This guide will help you set up Gmail SMTP to send emails from your Wishera app.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ This guide will help you set up Gmail SMTP to send emails from your Wishlist App
 2. Navigate to "Security"
 3. Under "2-Step Verification", click on "App passwords"
 4. Select "Mail" as the app and "Other" as the device
-5. Enter a name like "Wishlist App"
+5. Enter a name like "Wishera"
 6. Click "Generate"
 7. **Copy the 16-character password** (you'll need this for the configuration)
 
@@ -36,7 +36,7 @@ This guide will help you set up Gmail SMTP to send emails from your Wishlist App
     "Username": "your-gmail@gmail.com",
     "Password": "your-16-character-app-password",
     "FromEmail": "your-gmail@gmail.com",
-    "FromName": "Wishlist App"
+    "FromName": "Wishera"
   }
 }
 ```

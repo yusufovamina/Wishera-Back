@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 using System;
 using System.Collections.Generic;
 
-namespace WishlistApp.Models
+namespace WisheraApp.Models
 {
     [BsonIgnoreExtraElements]
     public class User
@@ -13,12 +13,10 @@ namespace WishlistApp.Models
         public string Id { get; set; } = null!;
 
         [BsonElement("username")]
-        [BsonRequired]
-        public string Username { get; set; } = null!;
+        public string Username { get; set; } = string.Empty;
 
         [BsonElement("email")]
-        [BsonRequired]
-        public string Email { get; set; } = null!;
+        public string Email { get; set; } = string.Empty;
 
         [BsonElement("emailNormalized")]
         public string EmailNormalized { get; set; } = string.Empty;
@@ -27,8 +25,7 @@ namespace WishlistApp.Models
         public string UsernameNormalized { get; set; } = string.Empty;
 
         [BsonElement("passwordHash")]
-        [BsonRequired]
-        public string PasswordHash { get; set; } = null!;
+        public string PasswordHash { get; set; } = string.Empty;
 
         [BsonElement("role")]
         public string Role { get; set; } = "user";

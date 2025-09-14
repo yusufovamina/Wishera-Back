@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using user_service.Services;
-using WishlistApp.DTO;
+using WisheraApp.DTO;
 
 namespace user_service.Controllers
 {
@@ -178,6 +178,33 @@ namespace user_service.Controllers
 			catch (ArgumentException ex)
 			{
 				return BadRequest(new { message = ex.Message });
+			}
+		}
+
+		[HttpGet("suggested")]
+		public async Task<ActionResult<List<UserSearchDTO>>> GetSuggestedUsers([FromQuery] string? userId = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+		{
+			try
+			{
+				var currentUserId = userId ?? GetCurrentUserId() ?? string.Empty;
+				if (string.IsNullOrEmpty(currentUserId))
+				{
+					return BadRequest(new { message = "User ID is required" });
+				}
+				var results = await _userService.GetSuggestedUsersAsync(currentUserId, page, pageSize);
+				return Ok(results);
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+			catch (KeyNotFoundException ex)
+			{
+				return NotFound(new { message = ex.Message });
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while getting suggested users." });
 			}
 		}
 	}

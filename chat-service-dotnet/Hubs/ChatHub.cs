@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 
 namespace ChatService.Api.Hubs
 {
+    // This file retains SignalR hub for backward compatibility. Raw WebSocket
+    // implementation is provided under WebSockets namespace.
     public class ChatMessage
     {
         public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -22,7 +24,8 @@ namespace ChatService.Api.Hubs
         Task<IEnumerable<ChatMessage>> GetHistoryAsync(string conversationId, int page, int pageSize);
         Task<bool> EditMessageAsync(string conversationId, string messageId, string newText);
         Task<bool> DeleteMessageAsync(string conversationId, string messageId);
-        Task<int> MarkReadAsync(string conversationId, string userId, IEnumerable<string> messageIds);
+		Task<int> MarkReadAsync(string conversationId, string userId, IEnumerable<string> messageIds);
+		Task<int> MarkDeliveredAsync(string conversationId, string userId, IEnumerable<string> messageIds);
         Task<IEnumerable<ChatMessage>> SearchAsync(string conversationId, string? queryText, DateTimeOffset? from, DateTimeOffset? to, int page, int pageSize);
     }
 
@@ -109,6 +112,31 @@ namespace ChatService.Api.Hubs
             return Task.FromResult(count);
         }
 
+		public Task<int> MarkDeliveredAsync(string conversationId, string userId, IEnumerable<string> messageIds)
+		{
+			if (!_messagesByConversation.TryGetValue(conversationId, out var list))
+			{
+				return Task.FromResult(0);
+			}
+			int count = 0;
+			lock (list)
+			{
+				foreach (var id in messageIds)
+				{
+					var msg = list.FirstOrDefault(m => m.Id == id);
+					if (msg != null && msg.RecipientUserId == userId)
+					{
+						if (!msg.DeliveredAt.HasValue)
+						{
+							msg.DeliveredAt = DateTimeOffset.UtcNow;
+							count++;
+						}
+					}
+				}
+			}
+			return Task.FromResult(count);
+		}
+
         public Task<IEnumerable<ChatMessage>> SearchAsync(string conversationId, string? queryText, DateTimeOffset? from, DateTimeOffset? to, int page, int pageSize)
         {
             if (!_messagesByConversation.TryGetValue(conversationId, out var list))
@@ -134,19 +162,53 @@ namespace ChatService.Api.Hubs
         }
     }
 
-    public class ChatHub : Hub
+	public class ChatHub : Hub
     {
         private readonly IChatStore _store;
+		private static readonly ConcurrentDictionary<string, HashSet<string>> _userConnections = new();
 
         public ChatHub(IChatStore store)
         {
             _store = store;
         }
 
-        public override Task OnConnectedAsync()
+		public override Task OnConnectedAsync()
         {
             return base.OnConnectedAsync();
         }
+
+		public override async Task OnDisconnectedAsync(Exception? exception)
+		{
+			// Best-effort presence cleanup if the client registered
+			var userId = Context.Items.ContainsKey("userId") ? Context.Items["userId"] as string : null;
+			if (!string.IsNullOrEmpty(userId))
+			{
+				if (_userConnections.TryGetValue(userId, out var set))
+				{
+					lock (set)
+					{
+						set.Remove(Context.ConnectionId);
+					}
+					if (set.Count == 0)
+					{
+						_userConnections.TryRemove(userId, out _);
+						await Clients.All.SendAsync("presenceChanged", new { userId, isOnline = false });
+					}
+				}
+			}
+			await base.OnDisconnectedAsync(exception);
+		}
+		public async Task RegisterUser(string userId)
+		{
+			Context.Items["userId"] = userId;
+			var set = _userConnections.GetOrAdd(userId, _ => new HashSet<string>());
+			lock (set)
+			{
+				set.Add(Context.ConnectionId);
+			}
+			await Groups.AddToGroupAsync(Context.ConnectionId, $"user:{userId}");
+			await Clients.All.SendAsync("presenceChanged", new { userId, isOnline = true });
+		}
 
         public static string GetConversationId(string userA, string userB)
         {
@@ -213,6 +275,20 @@ namespace ChatService.Api.Hubs
             });
             return count;
         }
+
+		public async Task<int> MarkDelivered(string currentUserId, string otherUserId, IEnumerable<string> messageIds)
+		{
+			var conversationId = GetConversationId(currentUserId, otherUserId);
+			var count = await _store.MarkDeliveredAsync(conversationId, currentUserId, messageIds);
+			await Clients.Group(conversationId).SendAsync("deliveredReceipts", new
+			{
+				userId = currentUserId,
+				conversationId,
+				messageIds = messageIds.ToArray(),
+				deliveredAt = DateTimeOffset.UtcNow
+			});
+			return count;
+		}
 
         public async Task<IEnumerable<ChatMessage>> LoadHistory(string currentUserId, string otherUserId, int page, int pageSize)
         {

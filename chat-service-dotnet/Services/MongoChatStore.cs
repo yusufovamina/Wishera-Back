@@ -30,7 +30,10 @@ namespace ChatService.Api.Services
 
         public MongoChatStore(IConfiguration configuration)
         {
-            var connectionString = configuration["ChatMongo:ConnectionString"]
+            var connectionString =
+                Environment.GetEnvironmentVariable("MONGO_URL")
+                ?? Environment.GetEnvironmentVariable("MONGODB_URI")
+                ?? configuration["ChatMongo:ConnectionString"]
                 ?? configuration.GetConnectionString("MongoDB")
                 ?? throw new InvalidOperationException("ChatMongo:ConnectionString or ConnectionStrings:MongoDB is not configured");
             var databaseName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
@@ -102,6 +105,19 @@ namespace ChatService.Api.Services
             var result = await _collection.UpdateManyAsync(filter, update);
             return (int)result.ModifiedCount;
         }
+
+		public async Task<int> MarkDeliveredAsync(string conversationId, string userId, IEnumerable<string> messageIds)
+		{
+			var filter = Builders<MongoMessage>.Filter.And(
+				Builders<MongoMessage>.Filter.Eq(x => x.ConversationId, conversationId),
+				Builders<MongoMessage>.Filter.In(x => x.MessageId, messageIds.ToArray()),
+				Builders<MongoMessage>.Filter.Eq(x => x.RecipientUserId, userId),
+				Builders<MongoMessage>.Filter.Eq(x => x.DeliveredAt, null)
+			);
+			var update = Builders<MongoMessage>.Update.Set(x => x.DeliveredAt, DateTimeOffset.UtcNow);
+			var result = await _collection.UpdateManyAsync(filter, update);
+			return (int)result.ModifiedCount;
+		}
 
         public async Task<IEnumerable<ChatMessage>> SearchAsync(string conversationId, string? queryText, DateTimeOffset? from, DateTimeOffset? to, int page, int pageSize)
         {

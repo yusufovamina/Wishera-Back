@@ -1,5 +1,11 @@
 
 services:
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    ports:
+      - "27017:27017"
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -16,9 +22,13 @@ services:
       dockerfile: Dockerfile
     container_name: chat-service
     depends_on:
+      - mongo
       - rabbitmq
     environment:
       - ASPNETCORE_URLS=http://+:5000
+      - ChatMongo__ConnectionString=mongodb://mongo:27017
+      - ChatMongo__Database=wishlist_chat
+      - ChatMongo__Collection=messages
     ports:
       - "5000:5000"
 

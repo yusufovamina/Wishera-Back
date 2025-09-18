@@ -1,24 +1,24 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\newal\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj": {}
+    "C:\\Users\\yusufova_a\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj": {}
   },
   "projects": {
-    "C:\\Users\\newal\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj": {
+    "C:\\Users\\yusufova_a\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\newal\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj",
+        "projectUniqueName": "C:\\Users\\yusufova_a\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj",
         "projectName": "ChatService",
-        "projectPath": "C:\\Users\\newal\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj",
-        "packagesPath": "C:\\Users\\newal\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\newal\\WishlistWebApp\\chat-service-dotnet\\obj\\",
+        "projectPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\chat-service-dotnet\\ChatService.csproj",
+        "packagesPath": "C:\\Users\\yusufova_a\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\chat-service-dotnet\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\newal\\WishlistWebApp\\NuGet.Config",
-          "C:\\Users\\newal\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\yusufova_a\\WishlistWebApp\\NuGet.Config",
+          "C:\\Users\\yusufova_a\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
@@ -44,7 +44,8 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "9.0.200"
       },
       "frameworks": {
         "net8.0": {
@@ -61,6 +62,10 @@
             "Swashbuckle.AspNetCore": {
               "target": "Package",
               "version": "[7.2.0, )"
+            },
+            "System.Text.Json": {
+              "target": "Package",
+              "version": "[8.0.0, )"
             },
             "stream-chat-net": {
               "target": "Package",
@@ -86,7 +91,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.404/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

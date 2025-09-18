@@ -42,12 +42,30 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("AllowAll"); // Use the CORS policy
 
+// Enable raw WebSockets for custom chat protocol
+app.UseWebSockets();
+
 app.MapControllers();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 // SignalR hub endpoints
 app.MapHub<ChatService.Api.Hubs.ChatHub>("/hubs/chat");
+
+// Raw WebSocket endpoint (non-SignalR)
+app.Map("/ws/chat", async context =>
+{
+    if (context.WebSockets.IsWebSocketRequest)
+    {
+        using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+        var store = context.RequestServices.GetRequiredService<ChatService.Api.Hubs.IChatStore>();
+        await ChatService.Api.WebSockets.ChatWebSocketHandler.HandleAsync(context, webSocket, store);
+    }
+    else
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+    }
+});
 
 // History & search REST endpoints for convenience
 app.MapGet("/api/chat/history", async (

@@ -1,24 +1,24 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\yusufova_a\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj": {}
+    "C:\\Users\\Halil_mn06\\Wishera-Back\\WishlistApp\\WishlistApp.csproj": {}
   },
   "projects": {
-    "C:\\Users\\yusufova_a\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj": {
+    "C:\\Users\\Halil_mn06\\Wishera-Back\\WishlistApp\\WishlistApp.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\yusufova_a\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj",
+        "projectUniqueName": "C:\\Users\\Halil_mn06\\Wishera-Back\\WishlistApp\\WishlistApp.csproj",
         "projectName": "WishlistApp",
-        "projectPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\WishlistApp\\WishlistApp.csproj",
-        "packagesPath": "C:\\Users\\yusufova_a\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\WishlistApp\\obj\\",
+        "projectPath": "C:\\Users\\Halil_mn06\\Wishera-Back\\WishlistApp\\WishlistApp.csproj",
+        "packagesPath": "C:\\Users\\Halil_mn06\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Halil_mn06\\Wishera-Back\\WishlistApp\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
         ],
         "configFilePaths": [
-          "C:\\Users\\yusufova_a\\WishlistWebApp\\NuGet.Config",
-          "C:\\Users\\yusufova_a\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\Halil_mn06\\Wishera-Back\\NuGet.Config",
+          "C:\\Users\\Halil_mn06\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],

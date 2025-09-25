@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using MongoDB.Driver;
+using MongoDB.Bson;
+using Microsoft.AspNetCore.Mvc;
+using System.Linq;
 using PresentationLayer;
 using Swashbuckle.AspNetCore.Filters;
 using System.Text;
@@ -73,5 +76,47 @@ app.UseCors();
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
 app.MapHub<ChatHub>("/chat");
+
+// Minimal history API backed by Mongo used by ChatHub
+app.MapGet("/api/chat/history", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromQuery] string userA,
+    [FromQuery] string userB,
+    [FromQuery] int page,
+    [FromQuery] int pageSize) =>
+{
+    if (string.IsNullOrWhiteSpace(userA) || string.IsNullOrWhiteSpace(userB))
+    {
+        return Results.BadRequest(new { message = "userA and userB are required" });
+    }
+    var a = userA;
+    var b = userB;
+    var conversationId = string.CompareOrdinal(a, b) < 0 ? $"{a}:{b}" : $"{b}:{a}";
+
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+    var db = mongoClient.GetDatabase(dbName);
+    var collection = db.GetCollection<BsonDocument>(collectionName);
+
+    var filter = Builders<BsonDocument>.Filter.Eq("conversationId", conversationId);
+    var cursor = await collection.Find(filter)
+        .Sort(Builders<BsonDocument>.Sort.Ascending("sentAt"))
+        .Skip(Math.Max(0, page) * Math.Max(1, pageSize))
+        .Limit(Math.Max(1, pageSize))
+        .ToListAsync();
+
+    var items = cursor.Select(d => new
+    {
+        id = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
+        conversationId = d.GetValue("conversationId", BsonNull.Value).IsBsonNull ? string.Empty : d["conversationId"].AsString,
+        senderUserId = d.GetValue("senderUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["senderUserId"].AsString,
+        recipientUserId = d.GetValue("recipientUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["recipientUserId"].AsString,
+        text = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
+        sentAt = d.GetValue("sentAt", BsonNull.Value).IsBsonNull ? DateTimeOffset.MinValue : d["sentAt"].ToUniversalTime(),
+    });
+
+    return Results.Ok(items);
+});
 
 app.Run();

@@ -1639,24 +1639,24 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\yusufova_a\\.nuget\\packages\\": {},
+    "C:\\Users\\Halil_mn06\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\auth-service.csproj",
+      "projectUniqueName": "C:\\Users\\Halil_mn06\\Wishera-Back\\auth-service\\auth-service.csproj",
       "projectName": "auth-service",
-      "projectPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\auth-service.csproj",
-      "packagesPath": "C:\\Users\\yusufova_a\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\yusufova_a\\WishlistWebApp\\auth-service\\obj\\",
+      "projectPath": "C:\\Users\\Halil_mn06\\Wishera-Back\\auth-service\\auth-service.csproj",
+      "packagesPath": "C:\\Users\\Halil_mn06\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\Halil_mn06\\Wishera-Back\\auth-service\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\yusufova_a\\WishlistWebApp\\NuGet.Config",
-        "C:\\Users\\yusufova_a\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\Halil_mn06\\Wishera-Back\\NuGet.Config",
+        "C:\\Users\\Halil_mn06\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],

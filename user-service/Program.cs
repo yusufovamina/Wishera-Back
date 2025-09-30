@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using WisheraApp.DTO;
 using WisheraApp.Models;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -70,9 +71,20 @@ builder.Services
 // Register core user logic (local services)
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+builder.Services.AddSingleton<ICacheService, CacheService>();
 
 // RabbitMQ RPC server
 builder.Services.AddHostedService<UserRpcServer>();
+
+// Redis distributed cache
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? Environment.GetEnvironmentVariable("ConnectionStrings__Redis")
+    ?? "localhost:6379";
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisConnection;
+    options.InstanceName = "wishera:";
+});
 
 var app = builder.Build();
 

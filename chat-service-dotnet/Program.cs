@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ChatService.Api.Hubs;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
@@ -16,6 +17,16 @@ builder.Services.AddSingleton<ChatService.Api.IStreamClientFactory, ChatService.
 
 // Register chat service (Stream REST API helpers remain available)
 builder.Services.AddScoped<ChatService.Api.IChatService, ChatService.Api.StreamChatService>();
+
+// Redis cache (for preferences)
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? Environment.GetEnvironmentVariable("ConnectionStrings__Redis")
+    ?? "localhost:6379";
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisConnection;
+    options.InstanceName = "wishera:";
+});
 
 // In-memory chat store for SignalR hub
 // Replace in-memory store with MongoDB-backed store
@@ -48,6 +59,39 @@ app.UseWebSockets();
 app.MapControllers();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+// Preferences: wallpaper
+app.MapGet("/api/chat/preferences/wallpaper", async (
+    [FromServices] IDistributedCache cache,
+    [FromQuery] string me,
+    [FromQuery] string peer) =>
+{
+    if (string.IsNullOrWhiteSpace(me) || string.IsNullOrWhiteSpace(peer))
+    {
+        return Results.BadRequest(new { message = "me and peer are required" });
+    }
+    var key = $"chat:pref:wallpaper:{me}:{peer}";
+    var url = await cache.GetStringAsync(key);
+    return Results.Ok(new { url = string.IsNullOrEmpty(url) ? null : url });
+});
+
+app.MapPost("/api/chat/preferences/wallpaper", async (
+    [FromServices] IDistributedCache cache,
+    [FromBody] WallpaperPref body) =>
+{
+    if (string.IsNullOrWhiteSpace(body.me) || string.IsNullOrWhiteSpace(body.peer))
+    {
+        return Results.BadRequest(new { saved = false, message = "me and peer are required" });
+    }
+    var key = $"chat:pref:wallpaper:{body.me}:{body.peer}";
+    if (string.IsNullOrWhiteSpace(body.url))
+    {
+        await cache.RemoveAsync(key);
+        return Results.Ok(new { saved = true });
+    }
+    await cache.SetStringAsync(key, body.url);
+    return Results.Ok(new { saved = true });
+});
 
 // SignalR hub endpoints
 app.MapHub<ChatService.Api.Hubs.ChatHub>("/hubs/chat");
@@ -102,6 +146,8 @@ namespace ChatService.Api
     using Microsoft.AspNetCore.Mvc;
     using StreamChat.Clients;
     using StreamChat.Models;
+
+    public record WallpaperPref(string me, string peer, string? url);
 
     [ApiController]
     [Route("api/chat")]

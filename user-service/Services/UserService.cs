@@ -14,11 +14,13 @@ namespace user_service.Services
 	{
 		private readonly MongoDbContext _dbContext;
 		private readonly ICloudinaryService _cloudinaryService;
+		private readonly ICacheService _cache;
 
-		public UserService(MongoDbContext dbContext, ICloudinaryService cloudinaryService)
+		public UserService(MongoDbContext dbContext, ICloudinaryService cloudinaryService, ICacheService cache)
 		{
 			_dbContext = dbContext;
 			_cloudinaryService = cloudinaryService;
+			_cache = cache;
 		}
 
 		private bool IsValidObjectId(string id) => MongoDB.Bson.ObjectId.TryParse(id, out _);
@@ -27,7 +29,10 @@ namespace user_service.Services
 		{
 			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 			if (!IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
-			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+			var cacheKey = $"user:profile:{userId}:{currentUserId}";
+			return await _cache.GetOrSetAsync(cacheKey, async () =>
+			{
+				var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null)
 				throw new KeyNotFoundException("User not found");
 
@@ -57,8 +62,9 @@ namespace user_service.Services
 				IsPrivate = user.IsPrivate,
 				WishlistCount = user.WishlistIds?.Count ?? 0
 			};
-
-			return profile;
+				return profile;
+			}, TimeSpan.FromMinutes(5))
+			?? throw new Exception("Failed to build profile");
 		}
 
 		public async Task<UserProfileDTO> UpdateUserProfileAsync(string userId, UpdateUserProfileDTO updateDto)
@@ -89,6 +95,7 @@ namespace user_service.Services
 				.Set(u => u.AllowedViewerIds, user.AllowedViewerIds);
 
 			await _dbContext.Users.UpdateOneAsync(u => u.Id == userId, updateDefinition);
+			await _cache.RemoveAsync($"user:profile:{userId}:{userId}");
 
 			return await GetUserProfileAsync(userId, userId); // Fetch updated profile
 		}
@@ -105,6 +112,7 @@ namespace user_service.Services
 
 			var updateDefinition = Builders<User>.Update.Set(u => u.AvatarUrl, imageUrl);
 			await _dbContext.Users.UpdateOneAsync(u => u.Id == userId, updateDefinition);
+			await _cache.RemoveAsync($"user:profile:{userId}:{userId}");
 
 			return imageUrl;
 		}

@@ -25,11 +25,13 @@ namespace gift_wishlist_service.Services
     {
         private readonly MongoDbContext _dbContext;
         private readonly ICloudinaryService _cloudinaryService;
+		private readonly ICacheService _cache;
 
-        public WishlistService(MongoDbContext dbContext, ICloudinaryService cloudinaryService)
+		public WishlistService(MongoDbContext dbContext, ICloudinaryService cloudinaryService, ICacheService cache)
         {
             _dbContext = dbContext;
             _cloudinaryService = cloudinaryService;
+			_cache = cache;
         }
 
         public async Task<WishlistResponseDTO> CreateWishlistAsync(string userId, CreateWishlistDTO createDto)
@@ -55,7 +57,8 @@ namespace gift_wishlist_service.Services
                 UpdatedAt = DateTime.UtcNow
             };
 
-            await _dbContext.Wishlists.InsertOneAsync(wishlist);
+			await _dbContext.Wishlists.InsertOneAsync(wishlist);
+			await _cache.RemoveAsync($"wishlist:feed:{userId}:1:10");
 
             // Update user's wishlists list
             var userUpdate = Builders<User>.Update.AddToSet(u => u.WishlistIds, wishlist.Id);
@@ -81,9 +84,12 @@ namespace gift_wishlist_service.Services
             };
         }
 
-        public async Task<WishlistResponseDTO> GetWishlistAsync(string id, string currentUserId)
+		public async Task<WishlistResponseDTO> GetWishlistAsync(string id, string currentUserId)
         {
-            var wishlist = await _dbContext.Wishlists.Find(w => w.Id == id).FirstOrDefaultAsync();
+			var cacheKey = $"wishlist:detail:{id}:{currentUserId}";
+			return await _cache.GetOrSetAsync(cacheKey, async () =>
+			{
+				var wishlist = await _dbContext.Wishlists.Find(w => w.Id == id).FirstOrDefaultAsync();
             if (wishlist == null) throw new KeyNotFoundException("Wishlist not found.");
 
             var user = await _dbContext.Users.Find(u => u.Id == wishlist.UserId).FirstOrDefaultAsync();
@@ -118,7 +124,7 @@ namespace gift_wishlist_service.Services
             var isLiked = !string.IsNullOrEmpty(currentUserId)
                 && await _dbContext.Likes.Find(l => l.WishlistId == id && l.UserId == currentUserId).AnyAsync();
 
-            return new WishlistResponseDTO
+			return new WishlistResponseDTO
             {
                 Id = wishlist.Id,
                 UserId = wishlist.UserId,
@@ -136,7 +142,8 @@ namespace gift_wishlist_service.Services
                 IsLiked = isLiked,
                 IsOwner = wishlist.UserId == currentUserId
             };
-        }
+			}, TimeSpan.FromMinutes(2))!;
+		}
 
         public async Task<WishlistResponseDTO> UpdateWishlistAsync(string id, string currentUserId, UpdateWishlistDTO updateDto)
         {
@@ -151,9 +158,10 @@ namespace gift_wishlist_service.Services
             wishlist.IsPublic = updateDto.IsPublic;
             wishlist.UpdatedAt = DateTime.UtcNow;
 
-            await _dbContext.Wishlists.ReplaceOneAsync(w => w.Id == id, wishlist);
+			await _dbContext.Wishlists.ReplaceOneAsync(w => w.Id == id, wishlist);
+			await _cache.RemoveAsync($"wishlist:detail:{id}:{currentUserId}");
 
-            return await GetWishlistAsync(id, currentUserId); // Fetch updated wishlist
+			return await GetWishlistAsync(id, currentUserId); // Fetch updated wishlist
         }
 
         public async Task<bool> DeleteWishlistAsync(string id, string currentUserId)
@@ -172,7 +180,8 @@ namespace gift_wishlist_service.Services
             // Remove associated feed events
             await _dbContext.Feed.DeleteManyAsync(fe => fe.WishlistId == id);
 
-            var deleteResult = await _dbContext.Wishlists.DeleteOneAsync(w => w.Id == id);
+			var deleteResult = await _dbContext.Wishlists.DeleteOneAsync(w => w.Id == id);
+			await _cache.RemoveAsync($"wishlist:detail:{id}:{currentUserId}");
 
             // Update user's wishlists list
             var update = Builders<User>.Update.Pull(u => u.WishlistIds, id);
@@ -216,7 +225,7 @@ namespace gift_wishlist_service.Services
                 filter &= filterBuilder.Eq(w => w.IsPublic, true);
             }
 
-            var wishlists = await _dbContext.Wishlists.Find(filter)
+			var wishlists = await _dbContext.Wishlists.Find(filter)
                                         .SortByDescending(w => w.CreatedAt)
                                         .Skip((page - 1) * pageSize)
                                         .Limit(pageSize)
@@ -248,7 +257,7 @@ namespace gift_wishlist_service.Services
             return wishlistDTOs;
         }
 
-        public async Task<List<WishlistFeedDTO>> GetFeedAsync(string currentUserId, int page, int pageSize)
+		public async Task<List<WishlistFeedDTO>> GetFeedAsync(string currentUserId, int page, int pageSize)
         {
             // Validate currentUserId format before using it
             if (!string.IsNullOrEmpty(currentUserId) && !ObjectIdValidator.IsValidObjectId(currentUserId))
@@ -299,7 +308,10 @@ namespace gift_wishlist_service.Services
                 filter |= privateFromFollowing;
             }
 
-            var feedWishlists = await _dbContext.Wishlists.Find(filter)
+			var cacheKey = $"wishlist:feed:{currentUserId}:{page}:{pageSize}";
+			return await _cache.GetOrSetAsync(cacheKey, async () =>
+			{
+				var feedWishlists = await _dbContext.Wishlists.Find(filter)
                                              .SortByDescending(w => w.CreatedAt)
                                              .Skip((page - 1) * pageSize)
                                              .Limit(pageSize)
@@ -343,7 +355,8 @@ namespace gift_wishlist_service.Services
                     IsLiked = isLiked
                 });
             }
-            return feedDTOs;
+				return feedDTOs;
+			}, TimeSpan.FromSeconds(30))!;
         }
 
         public async Task<bool> LikeWishlistAsync(string id, string currentUserId)
@@ -362,7 +375,9 @@ namespace gift_wishlist_service.Services
             };
             await _dbContext.Likes.InsertOneAsync(like);
 
-            return true;
+			await _cache.RemoveAsync($"wishlist:detail:{id}:{currentUserId}");
+			await _cache.RemoveAsync($"wishlist:feed:{currentUserId}:1:10");
+			return true;
         }
 
         public async Task<bool> UnlikeWishlistAsync(string id, string currentUserId)

@@ -405,3 +405,9 @@ C:\Users\yusufova_a\Wishera-Back\Wishera-Back\chat-service-dotnet\obj\Debug\net8
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.pdb
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.genruntimeconfig.cache
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ref\ChatService.dll
+C:\Users\Halil_mn06\Wishera-Back\chat-service-dotnet\bin\Debug\net8.0\Microsoft.Extensions.Caching.StackExchangeRedis.dll
+C:\Users\Halil_mn06\Wishera-Back\chat-service-dotnet\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\Halil_mn06\Wishera-Back\chat-service-dotnet\bin\Debug\net8.0\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\Halil_mn06\Wishera-Back\chat-service-dotnet\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
+C:\Users\Halil_mn06\Wishera-Back\chat-service-dotnet\bin\Debug\net8.0\Pipelines.Sockets.Unofficial.dll
+C:\Users\Halil_mn06\Wishera-Back\chat-service-dotnet\bin\Debug\net8.0\StackExchange.Redis.dll

@@ -331,3 +331,9 @@ C:\Users\yusufova_a\Wishera-Back\Wishera-Back\gift-wishlist-service\obj\Debug\ne
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\gift-wishlist-service\obj\Debug\net8.0\gift-wis.CF415006.Up2Date
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\gift-wishlist-service\obj\Debug\net8.0\gift-wishlist-service.genruntimeconfig.cache
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\gift-wishlist-service\obj\Debug\net8.0\ref\gift-wishlist-service.dll
+C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.Caching.StackExchangeRedis.dll
+C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
+C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Pipelines.Sockets.Unofficial.dll
+C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\StackExchange.Redis.dll

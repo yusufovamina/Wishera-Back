@@ -331,3 +331,9 @@ C:\Users\yusufova_a\Wishera-Back\Wishera-Back\user-service\obj\Debug\net8.0\refi
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\user-service\obj\Debug\net8.0\user-service.pdb
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\user-service\obj\Debug\net8.0\user-service.genruntimeconfig.cache
 C:\Users\yusufova_a\Wishera-Back\Wishera-Back\user-service\obj\Debug\net8.0\ref\user-service.dll
+C:\Users\Halil_mn06\Wishera-Back\user-service\bin\Debug\net8.0\Microsoft.Extensions.Caching.StackExchangeRedis.dll
+C:\Users\Halil_mn06\Wishera-Back\user-service\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\Halil_mn06\Wishera-Back\user-service\bin\Debug\net8.0\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\Halil_mn06\Wishera-Back\user-service\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
+C:\Users\Halil_mn06\Wishera-Back\user-service\bin\Debug\net8.0\Pipelines.Sockets.Unofficial.dll
+C:\Users\Halil_mn06\Wishera-Back\user-service\bin\Debug\net8.0\StackExchange.Redis.dll

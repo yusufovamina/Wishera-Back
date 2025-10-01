@@ -1,0 +1,28 @@
+# Ignore user secrets and local config
+**/appsettings.json
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.json
+
+# If you keep templates, do not ignore them
+!**/appsettings.Template.json
+!**/appsettings.Development.Template.json
+
+# dotenv files
+.env
+.env.*
+!.env.example
+
+# IDE / build artifacts
+**/bin/
+**/obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.swp
+*.DS_Store
+node_modules/
+dist/
+coverage/
+

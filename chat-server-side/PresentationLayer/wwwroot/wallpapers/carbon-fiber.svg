@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#0f172a"/>
+  <defs>
+    <pattern id="cf" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="10" height="20" fill="#111827"/>
+      <rect x="10" width="10" height="20" fill="#1f2937"/>
+    </pattern>
+  </defs>
+  <rect width="1600" height="900" fill="url(#cf)" opacity="0.65"/>
+</svg>
+

@@ -73,6 +73,9 @@ var app = builder.Build();
 app.UseRouting();
 app.UseCors();
 
+// Serve static wallpapers from wwwroot
+app.UseStaticFiles();
+
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
 app.MapHub<ChatHub>("/chat");
@@ -214,7 +217,91 @@ app.MapPost("/api/chat/message/delete", async (
     var result = await collection.DeleteOneAsync(filter);
     return result.DeletedCount > 0 ? Results.Ok(new { deleted = true }) : Results.NotFound(new { deleted = false });
 });
+
+var defaultWallpapers = new List<WallpaperCatalogItem>
+{
+    new("abstract-aurora","Abstract Aurora","Flowing teal/purple gradients; great for dark mode.","abstract",true,true,"/wallpapers/abstract-aurora.svg"),
+    new("minimal-mist","Minimal Mist","Soft off‑white with subtle grain; ideal for light mode.","minimal",false,true,"/wallpapers/minimal-mist.svg"),
+    new("midnight-grid","Midnight Grid","Faint geometric grid over deep navy.","geometric",true,false,"/wallpapers/midnight-grid.svg"),
+    new("desert-dunes","Desert Dunes","Warm sandy waves; cozy neutral.","nature",true,true,"/wallpapers/desert-dunes.svg"),
+    new("neon-shapes","Neon Shapes","Playful geometric shapes with neon accents.","geometric",true,true,"/wallpapers/neon-shapes.svg"),
+    new("forest-blur","Forest Blur","Defocused green woodland bokeh; calming.","nature",true,true,"/wallpapers/forest-blur.svg"),
+    new("carbon-fiber","Carbon Fiber","Textured dark diagonal weave; industrial.","abstract",true,false,"/wallpapers/carbon-fiber.svg"),
+    new("pastel-fade","Pastel Fade","Pastel rainbow gradient; cheerful.","abstract",false,true,"/wallpapers/pastel-fade.svg"),
+    new("ocean-lowpoly","Ocean Low‑Poly","Polygonal sea tones; crisp depth.","geometric",true,true,"/wallpapers/ocean-lowpoly.svg"),
+    new("paper-texture","Paper Texture","Light tactile paper; classic readability.","minimal",false,true,"/wallpapers/paper-texture.svg")
+};
+
+// List default wallpapers
+app.MapGet("/api/chat/wallpapers", () => Results.Ok(defaultWallpapers));
+
+// Preferences storage in Mongo: collection chat_wallpaper_prefs
+app.MapGet("/api/chat/preferences/wallpaper", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromQuery] string me,
+    [FromQuery] string peer) =>
+{
+    if (string.IsNullOrWhiteSpace(me) || string.IsNullOrWhiteSpace(peer))
+    {
+        return Results.BadRequest(new { message = "me and peer are required" });
+    }
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var db = mongoClient.GetDatabase(dbName);
+    var prefs = db.GetCollection<BsonDocument>("chat_wallpaper_prefs");
+    var key = string.CompareOrdinal(me, peer) < 0 ? $"{me}:{peer}" : $"{peer}:{me}";
+    var doc = await prefs.Find(Builders<BsonDocument>.Filter.Eq("key", key)).FirstOrDefaultAsync();
+    if (doc == null)
+    {
+        return Results.Ok(new { wallpaperId = (string?)null, opacity = 0.25 });
+    }
+    var wid = doc.GetValue("wallpaperId", BsonNull.Value).IsBsonNull ? null : doc["wallpaperId"].AsString;
+    var opacity = doc.GetValue("opacity", 0.25).ToDouble();
+    return Results.Ok(new { wallpaperId = wid, opacity });
+});
+
+app.MapPost("/api/chat/preferences/wallpaper", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromBody] SaveWallpaperPref body) =>
+{
+    if (string.IsNullOrWhiteSpace(body.me) || string.IsNullOrWhiteSpace(body.peer))
+    {
+        return Results.BadRequest(new { saved = false, message = "me and peer are required" });
+    }
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var db = mongoClient.GetDatabase(dbName);
+    var prefs = db.GetCollection<BsonDocument>("chat_wallpaper_prefs");
+    var key = string.CompareOrdinal(body.me, body.peer) < 0 ? $"{body.me}:{body.peer}" : $"{body.peer}:{body.me}";
+
+    if (body.wallpaperId == null)
+    {
+        await prefs.DeleteOneAsync(Builders<BsonDocument>.Filter.Eq("key", key));
+        return Results.Ok(new { saved = true });
+    }
+
+    var update = Builders<BsonDocument>.Update
+        .Set("key", key)
+        .Set("wallpaperId", body.wallpaperId)
+        .Set("opacity", Math.Clamp(body.opacity ?? 0.25, 0, 1));
+    await prefs.UpdateOneAsync(
+        Builders<BsonDocument>.Filter.Eq("key", key),
+        Builders<BsonDocument>.Update.Combine(update),
+        new UpdateOptions { IsUpsert = true });
+    return Results.Ok(new { saved = true });
+});
 app.Run();
 
+// ===== Types (must follow top-level statements) =====
+public record WallpaperCatalogItem(
+    string id,
+    string name,
+    string description,
+    string category,
+    bool supportsDark,
+    bool supportsLight,
+    string previewUrl
+);
+public record SaveWallpaperPref(string me, string peer, string? wallpaperId, double? opacity);
 public record EditRequest(string MessageId, string NewText);
 public record DeleteRequest(string MessageId);

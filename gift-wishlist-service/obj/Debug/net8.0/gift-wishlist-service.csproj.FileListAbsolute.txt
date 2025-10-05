@@ -337,3 +337,9 @@ C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsof
 C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
 C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Pipelines.Sockets.Unofficial.dll
 C:\Users\Halil_mn06\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\StackExchange.Redis.dll
+C:\Users\newal\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.Caching.StackExchangeRedis.dll
+C:\Users\newal\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll
+C:\Users\newal\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.Logging.Abstractions.dll
+C:\Users\newal\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Microsoft.Extensions.Options.dll
+C:\Users\newal\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\Pipelines.Sockets.Unofficial.dll
+C:\Users\newal\Wishera-Back\gift-wishlist-service\bin\Debug\net8.0\StackExchange.Redis.dll

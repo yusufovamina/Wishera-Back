@@ -29,7 +29,7 @@ function Start-Service {
 Start-Service -ServiceName "Auth Service" -Directory "auth-service" -Port "5219"
 Start-Service -ServiceName "User Service" -Directory "user-service" -Port "5220"
 Start-Service -ServiceName "Gift Wishlist Service" -Directory "gift-wishlist-service" -Port "5221"
-Start-Service -ServiceName "Chat Service" -Directory "chat-service-dotnet" -Port "5210"
+Start-Service -ServiceName "Chat Service" -Directory "chat-server-side/PresentationLayer" -Port "5162"
 Start-Service -ServiceName "Main Wishlist App" -Directory "WishlistApp" -Port "5155"
 
 Write-Host ""
@@ -39,7 +39,7 @@ Write-Host "Service URLs:" -ForegroundColor Cyan
 Write-Host "- Auth Service: http://localhost:5219" -ForegroundColor White
 Write-Host "- User Service: http://localhost:5220" -ForegroundColor White
 Write-Host "- Gift Wishlist Service: http://localhost:5221" -ForegroundColor White
-Write-Host "- Chat Service: http://localhost:5210" -ForegroundColor White
+Write-Host "- Chat Service: http://localhost:5162" -ForegroundColor White
 Write-Host "- Main Wishlist App: http://localhost:5155" -ForegroundColor White
 Write-Host ""
 Write-Host "Services are running in separate windows." -ForegroundColor Green

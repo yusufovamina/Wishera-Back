@@ -59,6 +59,7 @@ app.UseCors("AllowAll"); // Use the CORS policy
 
 // Enable raw WebSockets for custom chat protocol
 app.UseWebSockets();
+app.UseStaticFiles();
 
 app.MapControllers();
 
@@ -141,6 +142,65 @@ app.MapGet("/api/chat/search", async (
     var conversationId = ChatService.Api.Hubs.ChatHub.GetConversationId(userA, userB);
     var items = await store.SearchAsync(conversationId, q, from, to, page, pageSize);
     return Results.Ok(items);
+});
+
+// Media upload endpoint (Cloudinary)
+app.MapPost("/api/chat/upload-media", async (HttpRequest request) =>
+{
+    if (!request.HasFormContentType)
+    {
+        return Results.BadRequest(new { message = "Form content required" });
+    }
+    var form = await request.ReadFormAsync();
+    var file = form.Files["file"];
+    if (file is null || file.Length == 0)
+    {
+        return Results.BadRequest(new { message = "No file provided" });
+    }
+    var contentType = (file.ContentType ?? string.Empty).ToLowerInvariant();
+    var isImage = contentType.StartsWith("image/");
+    var isVideo = contentType.StartsWith("video/");
+    if (!isImage && !isVideo)
+    {
+        return Results.BadRequest(new { message = "Only images or videos are allowed" });
+    }
+    try
+    {
+        var cloudName = app.Configuration["Cloudinary:CloudName"];
+        var apiKey = app.Configuration["Cloudinary:ApiKey"];
+        var apiSecret = app.Configuration["Cloudinary:ApiSecret"];
+        if (string.IsNullOrEmpty(cloudName) || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiSecret))
+        {
+            return Results.Problem("Cloudinary is not configured", statusCode: 500);
+        }
+        var account = new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret);
+        var cloudinary = new CloudinaryDotNet.Cloudinary(account);
+        if (isImage)
+        {
+            var uploadParams = new CloudinaryDotNet.Actions.ImageUploadParams
+            {
+                File = new CloudinaryDotNet.FileDescription(file.FileName, file.OpenReadStream()),
+                Transformation = new CloudinaryDotNet.Transformation().Width(1600).Crop("limit").Quality(80)
+            };
+            var res = await cloudinary.UploadAsync(uploadParams);
+            if (res.Error != null) return Results.Problem(res.Error.Message, statusCode: 500);
+            return Results.Ok(new { url = res.SecureUrl.ToString(), mediaType = "image" });
+        }
+        else
+        {
+            var uploadParams = new CloudinaryDotNet.Actions.VideoUploadParams
+            {
+                File = new CloudinaryDotNet.FileDescription(file.FileName, file.OpenReadStream())
+            };
+            var res = await cloudinary.UploadAsync(uploadParams);
+            if (res.Error != null) return Results.Problem(res.Error.Message, statusCode: 500);
+            return Results.Ok(new { url = res.SecureUrl.ToString(), mediaType = "video" });
+        }
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: 500);
+    }
 });
 
 app.Run();

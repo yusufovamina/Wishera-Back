@@ -269,8 +269,9 @@ namespace gift_wishlist_service.Services
             }
 
             var user = await _dbContext.Users.Find(u => u.Id == currentUserId).FirstOrDefaultAsync();
-            // If user not found, proceed with public feed only
+            // If user not found, treat as no relationships
             var followingIds = user?.FollowingIds ?? new List<string>();
+            var followerIds = user?.FollowerIds ?? new List<string>();
             
             // Filter out invalid ObjectIds to prevent MongoDB errors
             var validFollowingIds = followingIds.Where(id => ObjectIdValidator.IsValidObjectId(id)).ToList();
@@ -282,33 +283,38 @@ namespace gift_wishlist_service.Services
                 Console.WriteLine($"Found invalid ObjectIds in following list: {string.Join(", ", invalidIds)}");
             }
             
-            if (!string.IsNullOrEmpty(currentUserId))
-            {
-                validFollowingIds.Add(currentUserId); // Include current user's own wishlists when possible
-            }
+            // Build friend list = mutual follow (both following each other)
+            var validFollowerIds = followerIds.Where(id => ObjectIdValidator.IsValidObjectId(id)).ToList();
+            var friends = validFollowingIds.Intersect(validFollowerIds).ToList();
 
             var filterBuilder = Builders<Wishlist>.Filter;
-            // Show all public wishlists from all users, plus private wishlists from people you follow
-            // Filter out wishlists with invalid UserIds to prevent ObjectId errors
+            // New policy: Feed only shows posts from friends or people you follow, plus your own
+            var candidates = new List<string>();
+            candidates.AddRange(validFollowingIds);
+            candidates.AddRange(friends);
+            if (!string.IsNullOrEmpty(currentUserId) && ObjectIdValidator.IsValidObjectId(currentUserId))
+            {
+                candidates.Add(currentUserId);
+            }
+            candidates = candidates.Distinct().ToList();
+
+            // If no relationships, return empty feed
+            if (!candidates.Any())
+            {
+                return new List<WishlistFeedDTO>();
+            }
+
+            // Only include wishlists from candidate users; respect privacy: public or allowed to current user
+            // We cannot easily evaluate AllowedViewerIds in a single query if it's an array; include both public and private from candidates
             var filter = filterBuilder.And(
-                filterBuilder.Eq(w => w.IsPublic, true),
+                filterBuilder.In(w => w.UserId, candidates),
                 filterBuilder.Exists(w => w.UserId),
                 filterBuilder.Ne(w => w.UserId, null),
                 filterBuilder.Ne(w => w.UserId, ""),
-                filterBuilder.Not(filterBuilder.Regex(w => w.UserId, new MongoDB.Bson.BsonRegularExpression("^[a-zA-Z]+$"))) // Exclude usernames like 'Sakyu'
+                filterBuilder.Not(filterBuilder.Regex(w => w.UserId, new MongoDB.Bson.BsonRegularExpression("^[a-zA-Z]+$")))
             );
-            
-            // Also include private wishlists from people you follow (if any)
-            if (validFollowingIds.Any())
-            {
-                var privateFromFollowing = filterBuilder.And(
-                    filterBuilder.In(w => w.UserId, validFollowingIds),
-                    filterBuilder.Eq(w => w.IsPublic, false)
-                );
-                filter |= privateFromFollowing;
-            }
 
-			var cacheKey = $"wishlist:feed:{currentUserId}:{page}:{pageSize}";
+            var cacheKey = $"wishlist:feed:v2:{currentUserId}:{page}:{pageSize}";
 			return await _cache.GetOrSetAsync(cacheKey, async () =>
 			{
 				var feedWishlists = await _dbContext.Wishlists.Find(filter)

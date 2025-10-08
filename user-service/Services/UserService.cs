@@ -264,54 +264,59 @@ namespace user_service.Services
 			return followingDTOs;
 		}
 
-		public async Task<List<UserSearchDTO>> GetSuggestedUsersAsync(string currentUserId, int page, int pageSize)
-		{
-			if (!IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
-			
-			var currentUser = await _dbContext.Users.Find(u => u.Id == currentUserId).FirstOrDefaultAsync();
-			if (currentUser == null) throw new KeyNotFoundException("Current user not found.");
+        public async Task<List<UserSearchDTO>> GetSuggestedUsersAsync(string currentUserId, int page, int pageSize)
+        {
+            if (!IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
+            
+            var currentUser = await _dbContext.Users.Find(u => u.Id == currentUserId).FirstOrDefaultAsync();
+            if (currentUser == null) throw new KeyNotFoundException("Current user not found.");
 
-			// Get users that the current user is not already following
-			var followingIds = currentUser.FollowingIds ?? new List<string>();
-			var excludeIds = new List<string>(followingIds) { currentUserId }; // Exclude self and already following
+            var followingIds = currentUser.FollowingIds ?? new List<string>();
+            var followerIds = currentUser.FollowerIds ?? new List<string>();
+            var excludeIds = new HashSet<string>(followingIds) { currentUserId };
 
-			// Find users who are not in the exclude list
-			var filter = Builders<User>.Filter.And(
-				Builders<User>.Filter.Nin(u => u.Id, excludeIds),
-				Builders<User>.Filter.Eq(u => u.IsPrivate, false) // Only suggest public users
-			);
+            // Candidate pool: public users not followed by current user
+            var baseFilter = Builders<User>.Filter.And(
+                Builders<User>.Filter.Eq(u => u.IsPrivate, false),
+                Builders<User>.Filter.Nin(u => u.Id, excludeIds.ToList())
+            );
 
-			var suggestedUsers = await _dbContext.Users.Find(filter)
-				.Skip((page - 1) * pageSize)
-				.Limit(pageSize)
-				.ToListAsync();
+            // Pull a pool to score
+            var candidatePool = await _dbContext.Users.Find(baseFilter)
+                .Limit(Math.Max(pageSize * 10, 100))
+                .ToListAsync();
 
-			var suggestedDTOs = new List<UserSearchDTO>();
-			foreach (var user in suggestedUsers)
-			{
-				// Calculate mutual friends count
-				var mutualFriendsCount = 0;
-				if (currentUser.FollowingIds != null && user.FollowerIds != null)
-				{
-					mutualFriendsCount = currentUser.FollowingIds.Intersect(user.FollowerIds).Count();
-				}
+            int Score(User u)
+            {
+                var uFollowerIds = u.FollowerIds ?? new List<string>();
+                var uInterests = u.Interests ?? new List<string>();
+                var myFollowing = followingIds ?? new List<string>();
+                var myInterests = currentUser.Interests ?? new List<string>();
 
-				suggestedDTOs.Add(new UserSearchDTO
-				{
-					Id = user.Id,
-					Username = user.Username,
-					AvatarUrl = user.AvatarUrl,
-					IsFollowing = false, // They're not following since we excluded them
-					MutualFriendsCount = mutualFriendsCount
-				});
-			}
+                var mutual = myFollowing.Intersect(uFollowerIds).Count();
+                var sharedInterests = myInterests.Intersect(uInterests, StringComparer.OrdinalIgnoreCase).Count();
+                var recencyDays = (DateTime.UtcNow - u.LastActive).TotalDays;
+                var recencyScore = recencyDays <= 1 ? 3 : recencyDays <= 7 ? 2 : recencyDays <= 30 ? 1 : 0;
+                return (mutual * 3) + (sharedInterests * 2) + recencyScore;
+            }
 
-			// Sort by mutual friends count (descending) and then by username
-			return suggestedDTOs.OrderByDescending(u => {
-				var user = suggestedUsers.First(su => su.Id == u.Id);
-				return currentUser.FollowingIds?.Intersect(user.FollowerIds ?? new List<string>()).Count() ?? 0;
-			}).ThenBy(u => u.Username).ToList();
-		}
+            var ranked = candidatePool
+                .Select(u => new { User = u, Score = Score(u), Mutual = (followingIds.Intersect(u.FollowerIds ?? new List<string>())).Count() })
+                .OrderByDescending(x => x.Score)
+                .ThenBy(x => x.User.Username)
+                .ToList();
+
+            var paged = ranked.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+            return paged.Select(x => new UserSearchDTO
+            {
+                Id = x.User.Id,
+                Username = x.User.Username,
+                AvatarUrl = x.User.AvatarUrl,
+                IsFollowing = false,
+                MutualFriendsCount = x.Mutual
+            }).ToList();
+        }
 
 		public async Task<bool> UserExistsAsync(string userId)
 		{

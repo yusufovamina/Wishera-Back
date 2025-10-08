@@ -41,9 +41,8 @@ namespace gift_wishlist_service.Controllers
                 
                 if (string.IsNullOrEmpty(currentUserId))
                 {
-                    // Return public-only feed if user claim is missing
-                    var publicOnly = await _wishlistService.GetFeedAsync(string.Empty, page, pageSize);
-                    return Ok(publicOnly);
+                    // No authenticated user → no feed (require friends/subscriptions)
+                    return Ok(new List<WishlistFeedDTO>());
                 }
                 var feed = await _wishlistService.GetFeedAsync(currentUserId, page, pageSize);
                 return Ok(feed);

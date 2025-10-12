@@ -1,0 +1,27 @@
+@user_service_HostAddress = http://localhost:5001
+
+### Test Birthday Update
+PUT {{user_service_HostAddress}}/api/users/birthday
+Content-Type: application/json
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+
+{
+  "birthday": "1990-05-15T00:00:00Z"
+}
+
+### Test Profile Update with Birthday
+PUT {{user_service_HostAddress}}/api/users/profile
+Content-Type: application/json
+Authorization: Bearer YOUR_JWT_TOKEN_HERE
+
+{
+  "username": "testuser",
+  "bio": "Updated bio",
+  "interests": ["technology", "music"],
+  "isPrivate": false,
+  "birthday": "1990-05-15T00:00:00Z"
+}
+
+### Get User Profile (to verify birthday is stored)
+GET {{user_service_HostAddress}}/api/users/USER_ID_HERE
+Authorization: Bearer YOUR_JWT_TOKEN_HERE

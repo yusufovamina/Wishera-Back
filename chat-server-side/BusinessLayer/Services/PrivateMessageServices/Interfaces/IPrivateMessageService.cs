@@ -1,0 +1,16 @@
+﻿using BusinessLayer.DTOs.ChatDtos;
+using BusinessLayer.DTOs.MessageDtos;
+
+namespace BusinessLayer.Services.PrivateMessageServices.Interfaces
+{
+    public interface IPrivateMessageService
+    {
+        Task<PrivateMessageResponseDto> StorePrivateMessage(int sourceUserId, int destinationUserId, string textMessage);
+        Task<PrivateMessagesWithPaginationResponseDto> GetPrivateMessages(
+            DateTime? pageDate,
+            int pageSize,
+            int firstUserId,
+            int secoundUserId);
+        Task<IEnumerable<ChatWithLastMessageResponseDto>> GetRecentChatsForUser(int userId);
+    }
+}

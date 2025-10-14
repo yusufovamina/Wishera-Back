@@ -80,8 +80,8 @@ builder.Services
     .AddGoogle(googleOptions =>
     {
         googleOptions.SignInScheme = "External";
-        googleOptions.ClientId = builder.Configuration["Authentication:Google:ClientId"]!;
-        googleOptions.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]!;
+        googleOptions.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "dummy-client-id";
+        googleOptions.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "dummy-client-secret";
         googleOptions.CallbackPath = "/signin-google";
         googleOptions.Scope.Add("profile");
         googleOptions.Scope.Add("email");

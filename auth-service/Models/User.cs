@@ -67,5 +67,8 @@ namespace auth_service.Models
 
         [BsonElement("allowedViewerIds")]
         public List<string> AllowedViewerIds { get; set; } = new List<string>();
+
+        [BsonElement("birthday")]
+        public DateTime? Birthday { get; set; }
     }
 }

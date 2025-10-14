@@ -28,10 +28,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 // Register services
-builder.Services.AddSingleton<IRabbitMqAuthClient, RabbitMqAuthClient>();
+builder.Services.AddHttpClient<IAuthService, AuthService>();
 builder.Services.AddSingleton<IUserServiceClient, UserServiceClient>();
 builder.Services.AddSingleton<IGiftWishlistServiceClient, GiftWishlistServiceClient>();
-builder.Services.AddScoped<IAuthService, AuthService>();
 // Email is handled in auth-service
 
 // Register Chat Integration Service

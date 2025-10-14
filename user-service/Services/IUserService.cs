@@ -7,6 +7,8 @@ using CloudinaryDotNet;
 using WisheraApp.DTO;
 using Microsoft.Extensions.Configuration;
 using BCrypt.Net;
+using user_service.Controllers;
+
 
 namespace user_service.Services
 {
@@ -23,5 +25,14 @@ namespace user_service.Services
         Task<List<UserSearchDTO>> GetSuggestedUsersAsync(string currentUserId, int page, int pageSize);
         Task<bool> UserExistsAsync(string userId);
         Task<User> GetUserByIdAsync(string userId);
+        
+        // Notification methods
+        Task<List<BirthdayReminderDTO>> GetUpcomingBirthdaysAsync(string currentUserId, int daysAhead);
+        Task<int> GetUnreadNotificationCountAsync(string userId);
+        Task<List<NotificationDTO>> GetNotificationsAsync(string userId, int page, int pageSize);
+        Task MarkNotificationAsReadAsync(string userId, string notificationId);
+        Task MarkAllNotificationsAsReadAsync(string userId);
+        Task UpdateBirthdayAsync(string userId, string birthday);
+        Task<object> GetDebugBirthdayInfoAsync(string userId);
     }
 }

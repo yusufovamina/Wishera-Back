@@ -1,11 +1,1 @@
-{
-  "Version": 1,
-  "Hash": "KBciGbW8UIE8dNVPfv4JaQ8McQkWIuA2msElL2PNOYo=",
-  "Source": "WishlistApp",
-  "BasePath": "_content/WishlistApp",
-  "Mode": "Default",
-  "ManifestType": "Build",
-  "ReferencedProjectsConfiguration": [],
-  "DiscoveryPatterns": [],
-  "Assets": []
-}
+{"Version":1,"Hash":"2zpqLxgcvwcJRol6JM2g4voiFEeLeZp/9NgtCHwusNI=","Source":"WishlistApp","BasePath":"_content/WishlistApp","Mode":"Default","ManifestType":"Build","ReferencedProjectsConfiguration":[],"DiscoveryPatterns":[],"Assets":[],"Endpoints":[]}

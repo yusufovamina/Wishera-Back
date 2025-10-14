@@ -47,9 +47,17 @@ namespace WisheraApp.Controllers
             try
             {
                 var response = await _authService.LoginAsync(loginDto);
-                // Get chat token on successful login
-                var chatToken = await _chatIntegrationService.GetUserTokenAsync(response.UserId);
-                response.ChatToken = chatToken; // Assuming AuthResponseDTO has a ChatToken property
+                // Try to get chat token on successful login, but don't fail if chat service is unavailable
+                try
+                {
+                    var chatToken = await _chatIntegrationService.GetUserTokenAsync(response.UserId);
+                    response.ChatToken = chatToken; // Assuming AuthResponseDTO has a ChatToken property
+                }
+                catch (Exception)
+                {
+                    // Chat service unavailable, continue without chat token
+                    response.ChatToken = null;
+                }
                 return Ok(response);
             }
             catch (InvalidOperationException ex)

@@ -207,5 +207,47 @@ namespace user_service.Controllers
 				return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while getting suggested users." });
 			}
 		}
+
+		[HttpPut("birthday")]
+		public async Task<ActionResult<object>> UpdateBirthday([FromBody] UpdateBirthdayDTO updateDto)
+		{
+			try
+			{
+				var userId = GetCurrentUserId() ?? string.Empty;
+				await _userService.UpdateBirthdayAsync(userId, updateDto.Birthday);
+				return Ok(new { message = "Birthday updated successfully" });
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+		}
+
+		[HttpPut("birthday/{userId}")]
+		public async Task<ActionResult<object>> UpdateUserBirthday(string userId, [FromBody] UpdateBirthdayDTO updateDto)
+		{
+			try
+			{
+				await _userService.UpdateBirthdayAsync(userId, updateDto.Birthday);
+				return Ok(new { message = "Birthday updated successfully" });
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+		}
+	}
+
+	public class UpdateBirthdayDTO
+	{
+		public required string Birthday { get; set; }
 	}
 }

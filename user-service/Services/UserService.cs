@@ -7,6 +7,7 @@ using CloudinaryDotNet;
 using WisheraApp.DTO;
 using Microsoft.Extensions.Configuration;
 using BCrypt.Net;
+using user_service.Controllers;
 
 namespace user_service.Services
 {
@@ -329,6 +330,187 @@ namespace user_service.Services
 			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 			return await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync()
 				?? throw new KeyNotFoundException("User not found");
+		}
+
+		// Notification methods
+		public async Task<List<BirthdayReminderDTO>> GetUpcomingBirthdaysAsync(string currentUserId, int daysAhead)
+		{
+			if (!IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid user ID format.");
+
+			// Get current user's following list
+			var currentUser = await _dbContext.Users.Find(u => u.Id == currentUserId).FirstOrDefaultAsync();
+			if (currentUser?.FollowingIds == null || !currentUser.FollowingIds.Any())
+			{
+				Console.WriteLine($"User {currentUserId} has no following list or it's empty");
+				return new List<BirthdayReminderDTO>();
+			}
+
+			Console.WriteLine($"User {currentUserId} is following {currentUser.FollowingIds.Count} users");
+
+			// Get following users with birthdays
+			var followingUsers = await _dbContext.Users
+				.Find(u => currentUser.FollowingIds.Contains(u.Id) && !string.IsNullOrEmpty(u.Birthday))
+				.ToListAsync();
+
+			Console.WriteLine($"Found {followingUsers.Count} following users with birthdays");
+
+			var today = DateTime.Today;
+			var targetDate = today.AddDays(daysAhead);
+			var birthdays = new List<BirthdayReminderDTO>();
+
+			foreach (var user in followingUsers)
+			{
+				Console.WriteLine($"Checking user {user.Username} with birthday {user.Birthday}");
+				
+				if (DateTime.TryParse(user.Birthday, out var birthday))
+				{
+					// Calculate this year's birthday
+					var thisYearBirthday = new DateTime(today.Year, birthday.Month, birthday.Day);
+					
+					// If birthday already passed this year, use next year's
+					if (thisYearBirthday < today)
+						thisYearBirthday = thisYearBirthday.AddYears(1);
+
+					var daysUntil = (thisYearBirthday - today).Days;
+					Console.WriteLine($"User {user.Username}: thisYearBirthday={thisYearBirthday:yyyy-MM-dd}, daysUntil={daysUntil}, targetDate={targetDate:yyyy-MM-dd}");
+
+					// Check if birthday is within the specified days
+					if (thisYearBirthday <= targetDate)
+					{
+						Console.WriteLine($"Adding birthday for {user.Username} - {daysUntil} days until birthday");
+						
+						birthdays.Add(new BirthdayReminderDTO
+						{
+							Id = Guid.NewGuid().ToString(),
+							UserId = user.Id,
+							Username = user.Username,
+							AvatarUrl = user.AvatarUrl,
+							Birthday = user.Birthday,
+							IsToday = daysUntil == 0,
+							IsTomorrow = daysUntil == 1,
+							DaysUntilBirthday = daysUntil
+						});
+					}
+				}
+				else
+				{
+					Console.WriteLine($"Failed to parse birthday for user {user.Username}: {user.Birthday}");
+				}
+			}
+
+			Console.WriteLine($"Returning {birthdays.Count} birthdays");
+			return birthdays.OrderBy(b => b.DaysUntilBirthday).ToList();
+		}
+
+		public async Task<int> GetUnreadNotificationCountAsync(string userId)
+		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			
+			// For now, return 0 as we don't have a notifications collection yet
+			// This can be implemented when we add a proper notifications system
+			return 0;
+		}
+
+		public async Task<List<NotificationDTO>> GetNotificationsAsync(string userId, int page, int pageSize)
+		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			
+			// For now, return empty list as we don't have a notifications collection yet
+			// This can be implemented when we add a proper notifications system
+			return new List<NotificationDTO>();
+		}
+
+		public async Task MarkNotificationAsReadAsync(string userId, string notificationId)
+		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			
+			// For now, do nothing as we don't have a notifications collection yet
+			// This can be implemented when we add a proper notifications system
+			await Task.CompletedTask;
+		}
+
+		public async Task MarkAllNotificationsAsReadAsync(string userId)
+		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			
+			// For now, do nothing as we don't have a notifications collection yet
+			// This can be implemented when we add a proper notifications system
+			await Task.CompletedTask;
+		}
+
+		public async Task UpdateBirthdayAsync(string userId, string birthday)
+		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+			
+			// Validate birthday format
+			if (!DateTime.TryParse(birthday, out _))
+				throw new ArgumentException("Invalid birthday format. Please use YYYY-MM-DD format.");
+
+			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+			if (user == null)
+				throw new KeyNotFoundException("User not found");
+
+			user.Birthday = birthday;
+			await _dbContext.Users.ReplaceOneAsync(u => u.Id == userId, user);
+		}
+
+		public async Task<object> GetDebugBirthdayInfoAsync(string userId)
+		{
+			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+
+			var currentUser = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+			if (currentUser == null)
+				return new { error = "User not found" };
+
+			// Get all users with birthdays
+			var allUsersWithBirthdays = await _dbContext.Users
+				.Find(u => !string.IsNullOrEmpty(u.Birthday))
+				.ToListAsync();
+
+			// Get following users
+			var followingUsers = currentUser.FollowingIds ?? new List<string>();
+			var followingUsersWithBirthdays = await _dbContext.Users
+				.Find(u => followingUsers.Contains(u.Id) && !string.IsNullOrEmpty(u.Birthday))
+				.ToListAsync();
+
+			var today = DateTime.Today;
+			var tomorrow = today.AddDays(1);
+
+			return new
+			{
+				currentUserId = userId,
+				currentUsername = currentUser.Username,
+				followingCount = followingUsers.Count,
+				followingIds = followingUsers,
+				allUsersWithBirthdays = allUsersWithBirthdays.Select(u => new
+				{
+					id = u.Id,
+					username = u.Username,
+					birthday = u.Birthday,
+					isFollowing = followingUsers.Contains(u.Id)
+				}).ToList(),
+				followingUsersWithBirthdays = followingUsersWithBirthdays.Select(u => new
+				{
+					id = u.Id,
+					username = u.Username,
+					birthday = u.Birthday,
+					daysUntilBirthday = GetDaysUntilBirthday(u.Birthday, today)
+				}).ToList(),
+				today = today.ToString("yyyy-MM-dd"),
+				tomorrow = tomorrow.ToString("yyyy-MM-dd")
+			};
+		}
+
+		private int GetDaysUntilBirthday(string birthdayStr, DateTime today)
+		{
+			if (DateTime.TryParse(birthdayStr, out var birthday))
+			{
+				var thisYearBirthday = new DateTime(today.Year, birthday.Month, birthday.Day);
+				if (thisYearBirthday < today)
+					thisYearBirthday = thisYearBirthday.AddYears(1);
+				return (thisYearBirthday - today).Days;
+			}
+			return -1;
 		}
 	}
 }

@@ -35,6 +35,10 @@ namespace WisheraApp.Models
         public List<string> Interests { get; set; } = new List<string>();
         [BsonElement("avatarUrl")]
         public string AvatarUrl { get; set; } = string.Empty;
+        [BsonElement("birthday")]
+        [BsonSerializer(typeof(BirthdaySerializer))]
+        [BsonIgnoreIfNull]
+        public string? Birthday { get; set; }
         [BsonElement("createdAt")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         [BsonElement("lastActive")]

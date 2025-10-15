@@ -17,6 +17,7 @@ namespace WisheraApp.Services
         Task<bool> DeleteWishlistAsync(string id, string currentUserId);
         Task<List<WishlistFeedDTO>> GetUserWishlistsAsync(string userId, string currentUserId, int page = 1, int pageSize = 20);
         Task<List<WishlistFeedDTO>> GetFeedAsync(string currentUserId, int page = 1, int pageSize = 20);
+        Task<List<WishlistFeedDTO>> GetLikedWishlistsAsync(string currentUserId, int page = 1, int pageSize = 20);
         Task<bool> LikeWishlistAsync(string id, string currentUserId);
         Task<bool> UnlikeWishlistAsync(string id, string currentUserId);
         Task<CommentDTO> AddCommentAsync(string id, string currentUserId, CreateCommentDTO commentDto);
@@ -103,6 +104,13 @@ namespace WisheraApp.Services
         {
             var payload = JsonSerializer.Serialize(new { CurrentUserId = currentUserId, Page = page, PageSize = pageSize });
             var response = await SendRpcAsync("wishlist.feed", payload);
+            return JsonSerializer.Deserialize<List<WishlistFeedDTO>>(response)!;
+        }
+
+        public async Task<List<WishlistFeedDTO>> GetLikedWishlistsAsync(string currentUserId, int page = 1, int pageSize = 20)
+        {
+            var payload = JsonSerializer.Serialize(new { CurrentUserId = currentUserId, Page = page, PageSize = pageSize });
+            var response = await SendRpcAsync("wishlist.liked", payload);
             return JsonSerializer.Deserialize<List<WishlistFeedDTO>>(response)!;
         }
 

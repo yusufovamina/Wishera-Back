@@ -1,114 +1,33 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.WebUtilities;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
-using BCrypt.Net;
 using MongoDB.Driver;
 using auth_service.Models;
 using auth_service.Services;
 using auth_service.DTO;
-using System.Net.Http.Headers;
-using Microsoft.AspNetCore.WebUtilities;
-using System.Security.Cryptography;
-using Microsoft.IdentityModel.Protocols;
-using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.Tokens;
 
 namespace auth_service.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class AuthController : ControllerBase
+    public class ExternalAuthController : ControllerBase
     {
         private readonly IAuthService _authService;
         private static readonly Dictionary<string, string> GoogleStateToCodeVerifier = new();
 
-        public AuthController(IAuthService authService)
+        public ExternalAuthController(IAuthService authService)
         {
             _authService = authService;
         }
 
-        [HttpPost("register")]
-        public async Task<ActionResult<AuthResponseDTO>> Register(RegisterDTO registerDto)
-        {
-            try
-            {
-                var response = await _authService.RegisterAsync(registerDto);
-                return Ok(response);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpPost("login")]
-        public async Task<ActionResult<AuthResponseDTO>> Login(LoginDTO loginDto)
-        {
-            try
-            {
-                var response = await _authService.LoginAsync(loginDto);
-                return Ok(response);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpPost("forgot-password")]
-        public async Task<ActionResult> ForgotPassword(ForgotPasswordDTO forgotPasswordDto)
-        {
-            try
-            {
-                await _authService.ForgotPasswordAsync(forgotPasswordDto.Email);
-                return Ok(new { message = "Password reset link sent to your email" });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpPost("reset-password")]
-        public async Task<ActionResult> ResetPassword(ResetPasswordDTO resetPasswordDto)
-        {
-            try
-            {
-                await _authService.ResetPasswordAsync(resetPasswordDto.Token, resetPasswordDto.NewPassword);
-                return Ok(new { message = "Password reset successfully" });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpGet("check-email")]
-        public async Task<ActionResult<bool>> CheckEmailAvailability([FromQuery] string email)
-        {
-            var isAvailable = await _authService.IsEmailUniqueAsync(email);
-            return Ok(isAvailable);
-        }
-
-        [HttpGet("check-username")]
-        public async Task<ActionResult<bool>> CheckUsernameAvailability([FromQuery] string username)
-        {
-            var isAvailable = await _authService.IsUsernameUniqueAsync(username);
-            return Ok(isAvailable);
-        }
-
-        // --- OAuth: Start Google login ---
-        [HttpHead("external/{provider}")]
-        public IActionResult ExternalHead(string provider)
-        {
-            // Allow HEAD probe from web route to find a valid endpoint
-            return Ok();
-        }
-
-        [HttpGet("external/{provider}")]
-        public IActionResult ExternalLoginStart(string provider)
+        [HttpGet("login/{provider}")]
+        public IActionResult Login(string provider)
         {
             var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
             var apiOrigin = $"{Request.Scheme}://{Request.Host}";
@@ -116,7 +35,8 @@ namespace auth_service.Controllers
             if (string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase))
             {
                 var clientId = cfg["Authentication:Google:ClientId"];
-                if (string.IsNullOrWhiteSpace(clientId)) return StatusCode(500, new { message = "Google OAuth not configured" });
+                if (string.IsNullOrWhiteSpace(clientId) || clientId == "YOUR_ACTUAL_GOOGLE_CLIENT_ID") 
+                    return StatusCode(500, new { message = "Google OAuth not configured. Please set up Google OAuth credentials in appsettings.json" });
 
                 var codeVerifier = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
                     .Replace("+", "-").Replace("/", "_").Replace("=", string.Empty);
@@ -151,9 +71,8 @@ namespace auth_service.Controllers
             return NotFound(new { message = "Provider not supported yet" });
         }
 
-        // --- OAuth: Google callback ---
         [HttpGet("callback/{provider}")]
-        public async Task<IActionResult> ExternalCallback([FromQuery] string code, [FromQuery] string state, string provider)
+        public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state, string provider)
         {
             string codeVerifier;
             lock (GoogleStateToCodeVerifier)
@@ -298,5 +217,9 @@ namespace auth_service.Controllers
             return Redirect(redirectUrl);
         }
 
+        // Alias for Google callback path expected by Google OAuth
+        [HttpGet("/signin-google")]
+        public Task<IActionResult> GoogleSigninAlias([FromQuery] string code, [FromQuery] string state)
+            => Callback(code, state, "Google");
     }
 }

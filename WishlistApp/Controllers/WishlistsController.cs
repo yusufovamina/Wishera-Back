@@ -40,6 +40,20 @@ namespace WisheraApp.Controllers
             }
         }
 
+        [HttpGet("liked")]
+        public async Task<ActionResult<List<WishlistFeedDTO>>> GetLikedWishlists(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
+            var likedWishlists = await _giftWishlistServiceClient.GetLikedWishlistsAsync(currentUserId, page, pageSize);
+            return Ok(likedWishlists);
+        }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<WishlistResponseDTO>> GetWishlist(string id)
         {

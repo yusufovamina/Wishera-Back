@@ -57,6 +57,7 @@ namespace user_service.Services
 				Bio = isProfilePublic ? user.Bio : null,
 				Interests = isProfilePublic ? user.Interests : new List<string>(),
 				AvatarUrl = user.AvatarUrl,
+				Birthday = isProfilePublic ? user.Birthday : null,
 				FollowersCount = followersCount,
 				FollowingCount = followingCount,
 				IsFollowing = isFollowing,
@@ -87,12 +88,22 @@ namespace user_service.Services
 			user.Bio = updateDto.Bio ?? user.Bio;
 			user.Interests = updateDto.Interests ?? user.Interests;
 			user.IsPrivate = updateDto.IsPrivate;
+			
+			// Handle birthday update
+			if (!string.IsNullOrEmpty(updateDto.Birthday))
+			{
+				// Validate birthday format
+				if (!DateTime.TryParse(updateDto.Birthday, out _))
+					throw new ArgumentException("Invalid birthday format. Please use YYYY-MM-DD format.");
+				user.Birthday = updateDto.Birthday;
+			}
 
 			var updateDefinition = Builders<User>.Update
 				.Set(u => u.Username, user.Username)
 				.Set(u => u.Bio, user.Bio)
 				.Set(u => u.Interests, user.Interests)
 				.Set(u => u.IsPrivate, user.IsPrivate)
+				.Set(u => u.Birthday, user.Birthday)
 				.Set(u => u.AllowedViewerIds, user.AllowedViewerIds);
 
 			await _dbContext.Users.UpdateOneAsync(u => u.Id == userId, updateDefinition);

@@ -10,6 +10,7 @@ namespace WisheraApp.DTO
         public string? Bio { get; set; }
         public List<string> Interests { get; set; } = new List<string>();
         public string? AvatarUrl { get; set; }
+        public string? Birthday { get; set; }
         public DateTime CreatedAt { get; set; }
         public int FollowingCount { get; set; }
         public int FollowersCount { get; set; }
@@ -28,6 +29,7 @@ namespace WisheraApp.DTO
 
         public List<string>? Interests { get; set; }
         public bool IsPrivate { get; set; }
+        public string? Birthday { get; set; }
     }
 
     public class UserSearchDTO

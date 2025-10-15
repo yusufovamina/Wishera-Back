@@ -21,6 +21,7 @@ namespace WisheraApp.Services
         Task<List<CommentDTO>> GetCommentsAsync(string wishlistId, int page, int pageSize);
         Task<string> UploadItemImageAsync(IFormFile file);
         Task<int> CleanupCorruptedWishlistsAsync();
+        Task<List<WishlistFeedDTO>> GetLikedWishlistsAsync(string currentUserId, int page, int pageSize);
     }
 }
 

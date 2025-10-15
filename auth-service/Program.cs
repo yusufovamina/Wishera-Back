@@ -76,16 +76,6 @@ builder.Services
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.Cookie.HttpOnly = true;
         options.Cookie.SecurePolicy = CookieSecurePolicy.None;
-    })
-    .AddGoogle(googleOptions =>
-    {
-        googleOptions.SignInScheme = "External";
-        googleOptions.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "dummy-client-id";
-        googleOptions.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "dummy-client-secret";
-        googleOptions.CallbackPath = "/signin-google";
-        googleOptions.Scope.Add("profile");
-        googleOptions.Scope.Add("email");
-        googleOptions.SaveTokens = true;
     });
 // RabbitMQ RPC server for Auth
 builder.Services.AddHostedService<AuthRpcServer>();

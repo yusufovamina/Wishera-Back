@@ -571,5 +571,83 @@ namespace gift_wishlist_service.Services
                 return 0;
             }
         }
+
+        public async Task<List<WishlistFeedDTO>> GetLikedWishlistsAsync(string currentUserId, int page = 1, int pageSize = 20)
+        {
+            var cacheKey = $"wishlist:liked:{currentUserId}:{page}:{pageSize}";
+            return await _cache.GetOrSetAsync(cacheKey, async () =>
+            {
+                // Get all likes for the current user
+                var userLikes = await _dbContext.Likes
+                    .Find(l => l.UserId == currentUserId)
+                    .SortByDescending(l => l.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Limit(pageSize)
+                    .ToListAsync();
+
+                if (!userLikes.Any())
+                    return new List<WishlistFeedDTO>();
+
+                // Get the wishlist IDs from the likes
+                var wishlistIds = userLikes.Select(l => l.WishlistId).ToList();
+
+                // Get the wishlists
+                var wishlists = await _dbContext.Wishlists
+                    .Find(w => wishlistIds.Contains(w.Id))
+                    .ToListAsync();
+
+                // Get the owners of these wishlists
+                var ownerIds = wishlists.Select(w => w.UserId).Distinct().ToList();
+                var owners = await _dbContext.Users
+                    .Find(u => ownerIds.Contains(u.Id))
+                    .ToListAsync();
+
+                var feedDTOs = new List<WishlistFeedDTO>();
+
+                foreach (var w in wishlists)
+                {
+                    var owner = owners.FirstOrDefault(o => o.Id == w.UserId);
+                    if (owner == null) continue;
+
+                    // Get like count for this wishlist
+                    var likeCount = await _dbContext.Likes.CountDocumentsAsync(l => l.WishlistId == w.Id);
+
+                    // Get comment count for this wishlist
+                    var commentCount = await _dbContext.Comments.CountDocumentsAsync(c => c.WishlistId == w.Id);
+
+                    // This wishlist is liked by the current user (since we're in the liked section)
+                    var isLiked = true;
+
+                    feedDTOs.Add(new WishlistFeedDTO
+                    {
+                        Id = w.Id,
+                        UserId = w.UserId,
+                        Title = w.Title,
+                        Description = w.Description,
+                        Category = w.Category,
+                        IsPublic = w.IsPublic,
+                        CreatedAt = w.CreatedAt,
+                        Username = owner.Username,
+                        AvatarUrl = owner.AvatarUrl,
+                        LikeCount = (int)likeCount,
+                        CommentCount = (int)commentCount,
+                        IsLiked = isLiked
+                    });
+                }
+
+                // Sort by the order of likes (most recent first)
+                var sortedDTOs = new List<WishlistFeedDTO>();
+                foreach (var like in userLikes)
+                {
+                    var dto = feedDTOs.FirstOrDefault(d => d.Id == like.WishlistId);
+                    if (dto != null)
+                    {
+                        sortedDTOs.Add(dto);
+                    }
+                }
+
+                return sortedDTOs;
+            }, TimeSpan.FromSeconds(30))!;
+        }
     }
 }

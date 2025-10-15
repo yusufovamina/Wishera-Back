@@ -194,6 +194,10 @@ namespace gift_wishlist_service.Services
                 case "wishlist.categories":
                     var categories = WishlistCategories.Categories;
                     return JsonSerializer.Serialize(categories);
+                case "wishlist.liked":
+                    var likedData = JsonSerializer.Deserialize<FeedRequestDTO>(payload)!;
+                    var likedWishlists = await _wishlistService.GetLikedWishlistsAsync(likedData.CurrentUserId, likedData.Page, likedData.PageSize);
+                    return JsonSerializer.Serialize(likedWishlists);
 
                 // Gift operations
                 case "gift.create":
@@ -256,13 +260,17 @@ namespace gift_wishlist_service.Services
                     return JsonSerializer.Serialize(reservedGifts);
                 case "gift.getUserWishlist":
                     var getUserWishlistData = JsonSerializer.Deserialize<GetUserWishlistRequestDTO>(payload)!;
+                    Console.WriteLine($"=== RPC gift.getUserWishlist called for userId: {getUserWishlistData.UserId} ===");
+                    
                     var userWishlistsList = await _dbContext.Wishlists.Find(w => w.UserId == getUserWishlistData.UserId).ToListAsync();
                     var wishlistIds = userWishlistsList.Select(w => w.Id).ToList();
                     
-                    var filter = MongoDB.Driver.Builders<Gift>.Filter.Or(
-                        MongoDB.Driver.Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds),
-                        MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.WishlistId, (string?)null)
-                    );
+                    Console.WriteLine($"Found {userWishlistsList.Count} wishlists for user {getUserWishlistData.UserId}");
+                    Console.WriteLine($"Wishlist IDs: [{string.Join(", ", wishlistIds)}]");
+                    
+                    // Only return gifts that belong to the user's actual wishlists
+                    // Remove the filter for gifts with wishlistId == null to prevent showing orphaned gifts
+                    var filter = MongoDB.Driver.Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds);
                     
                     if (!string.IsNullOrEmpty(getUserWishlistData.Category))
                     {
@@ -283,6 +291,13 @@ namespace gift_wishlist_service.Services
                     }
                     
                     var gifts = await giftsQuery.ToListAsync();
+                    
+                    Console.WriteLine($"Found {gifts.Count} gifts for user {getUserWishlistData.UserId}");
+                    foreach (var giftItem in gifts)
+                    {
+                        Console.WriteLine($"  Gift: {giftItem.Name} (WishlistId: {giftItem.WishlistId})");
+                    }
+                    
                     return JsonSerializer.Serialize(gifts);
                 case "gift.getById":
                     var getByIdData = JsonSerializer.Deserialize<GiftActionRequestDTO>(payload)!;
@@ -291,7 +306,12 @@ namespace gift_wishlist_service.Services
                     return JsonSerializer.Serialize(giftById);
                 case "gift.getShared":
                     var getSharedData = JsonSerializer.Deserialize<GiftActionRequestDTO>(payload)!;
-                    var sharedGifts = await _dbContext.Gifts.Find(g => g.WishlistId == getSharedData.UserId).ToListAsync();
+                    // Find all wishlists belonging to the user
+                    var sharedUserWishlistsList = await _dbContext.Wishlists.Find(w => w.UserId == getSharedData.UserId).ToListAsync();
+                    var sharedWishlistIds = sharedUserWishlistsList.Select(w => w.Id).ToList();
+                    
+                    // Return gifts from those wishlists
+                    var sharedGifts = await _dbContext.Gifts.Find(g => g.WishlistId != null && sharedWishlistIds.Contains(g.WishlistId)).ToListAsync();
                     return JsonSerializer.Serialize(sharedGifts);
                 case "gift.uploadImage":
                     var uploadGiftImageData = JsonSerializer.Deserialize<UploadImageRequestDTO>(payload)!;

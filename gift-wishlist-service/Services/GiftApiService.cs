@@ -106,12 +106,18 @@ namespace gift_wishlist_service.Services
 
         public async Task<List<Gift>> GetUserWishlistAsync(string userId, string? category, string? sortBy)
         {
+            Console.WriteLine($"=== GetUserWishlistAsync called for userId: {userId} ===");
+            
             var userWishlistsList = await _dbContext.Wishlists.Find(w => w.UserId == userId).ToListAsync();
             var wishlistIds = userWishlistsList.Select(w => w.Id).ToList();
-            var filter = Builders<Gift>.Filter.Or(
-                Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds),
-                Builders<Gift>.Filter.Eq(g => g.WishlistId, (string?)null)
-            );
+            
+            Console.WriteLine($"Found {userWishlistsList.Count} wishlists for user {userId}");
+            Console.WriteLine($"Wishlist IDs: [{string.Join(", ", wishlistIds)}]");
+            
+            // Only return gifts that belong to the user's actual wishlists
+            // Remove the filter for gifts with wishlistId == null to prevent showing orphaned gifts
+            var filter = Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds);
+            
             if (!string.IsNullOrEmpty(category))
             {
                 filter &= Builders<Gift>.Filter.Regex(g => g.Category, new MongoDB.Bson.BsonRegularExpression(category, "i"));
@@ -128,12 +134,25 @@ namespace gift_wishlist_service.Services
                     _ => giftsQuery
                 };
             }
-            return await giftsQuery.ToListAsync();
+            var gifts = await giftsQuery.ToListAsync();
+            
+            Console.WriteLine($"Found {gifts.Count} gifts for user {userId}");
+            foreach (var gift in gifts)
+            {
+                Console.WriteLine($"  Gift: {gift.Name} (WishlistId: {gift.WishlistId})");
+            }
+            
+            return gifts;
         }
 
         public async Task<List<Gift>> GetSharedWishlistAsync(string userId)
         {
-            return await _dbContext.Gifts.Find(g => g.WishlistId == userId).ToListAsync();
+            // Find all wishlists belonging to the user
+            var userWishlistsList = await _dbContext.Wishlists.Find(w => w.UserId == userId).ToListAsync();
+            var wishlistIds = userWishlistsList.Select(w => w.Id).ToList();
+            
+            // Return gifts from those wishlists
+            return await _dbContext.Gifts.Find(g => g.WishlistId != null && wishlistIds.Contains(g.WishlistId)).ToListAsync();
         }
 
         public async Task<string> UploadGiftImageAsync(string id, IFormFile imageFile)

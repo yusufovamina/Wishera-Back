@@ -1,1 +1,24 @@
-{"Version":1,"Hash":"YFX7tl/NsDihCo6Ocw6eiYk8fKWVxYD12zD1aB+H+oU=","Source":"user-service","BasePath":"_content/user-service","Mode":"Default","ManifestType":"Build","ReferencedProjectsConfiguration":[{"Identity":"/Users/amina/Downloads/Wishera-Back-backup/WishlistApp/WishlistApp.csproj","Version":2,"Source":"WishlistApp","GetPublishAssetsTargets":"ComputeReferencedStaticWebAssetsPublishManifest;GetCurrentProjectPublishStaticWebAssetItems","AdditionalPublishProperties":"","AdditionalPublishPropertiesToRemove":"WebPublishProfileFile;TargetFramework","GetBuildAssetsTargets":"GetCurrentProjectBuildStaticWebAssetItems","AdditionalBuildProperties":"","AdditionalBuildPropertiesToRemove":"WebPublishProfileFile;TargetFramework"}],"DiscoveryPatterns":[],"Assets":[],"Endpoints":[]}
+{
+  "Version": 1,
+  "Hash": "qZ/z68jKolPBvlW4l0ZBtSKWb0j+JuTHDAX0RxgPNkw=",
+  "Source": "user-service",
+  "BasePath": "_content/user-service",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [
+    {
+      "Identity": "C:\\Users\\Halil_mn06\\Downloads\\git\\Wishera-Back\\WishlistApp\\WishlistApp.csproj",
+      "Version": 2,
+      "Source": "WishlistApp",
+      "GetPublishAssetsTargets": "ComputeReferencedStaticWebAssetsPublishManifest;GetCurrentProjectPublishStaticWebAssetItems",
+      "AdditionalPublishProperties": "",
+      "AdditionalPublishPropertiesToRemove": "WebPublishProfileFile;TargetFramework",
+      "GetBuildAssetsTargets": "GetCurrentProjectBuildStaticWebAssetItems",
+      "AdditionalBuildProperties": "",
+      "AdditionalBuildPropertiesToRemove": "WebPublishProfileFile;TargetFramework"
+    }
+  ],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}

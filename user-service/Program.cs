@@ -71,6 +71,8 @@ builder.Services
 // Register core user logic (local services)
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<ICacheService, CacheService>();
 
 // RabbitMQ RPC server

@@ -4659,32 +4659,25 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Halil_mn06\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "/Users/amina/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Halil_mn06\\Downloads\\git\\Wishera-Back\\WishlistApp\\WishlistApp.csproj",
+      "projectUniqueName": "/Users/amina/Downloads/Wishera-Back-backup/WishlistApp/WishlistApp.csproj",
       "projectName": "WishlistApp",
-      "projectPath": "C:\\Users\\Halil_mn06\\Downloads\\git\\Wishera-Back\\WishlistApp\\WishlistApp.csproj",
-      "packagesPath": "C:\\Users\\Halil_mn06\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Halil_mn06\\Downloads\\git\\Wishera-Back\\WishlistApp\\obj\\",
+      "projectPath": "/Users/amina/Downloads/Wishera-Back-backup/WishlistApp/WishlistApp.csproj",
+      "packagesPath": "/Users/amina/.nuget/packages/",
+      "outputPath": "/Users/amina/Downloads/Wishera-Back-backup/WishlistApp/obj/",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\Halil_mn06\\Downloads\\git\\Wishera-Back\\NuGet.Config",
-        "C:\\Users\\Halil_mn06\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        "/Users/amina/Downloads/Wishera-Back-backup/NuGet.Config",
+        "/Users/amina/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
       ],
       "sources": {
-        "C:\\Program Files\\dotnet\\library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -4703,7 +4696,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "9.0.200"
+      "SdkAnalysisLevel": "9.0.300"
     },
     "frameworks": {
       "net8.0": {
@@ -4761,7 +4754,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/9.0.305/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("gift-wishlist-service")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5e918a6ed2ff0a5fa87e164631dd175292a95939")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7cfea01aca4f15f62a9adda793894721794036b6")]
 [assembly: System.Reflection.AssemblyProductAttribute("gift-wishlist-service")]
 [assembly: System.Reflection.AssemblyTitleAttribute("gift-wishlist-service")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

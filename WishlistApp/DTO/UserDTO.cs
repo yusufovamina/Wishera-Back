@@ -40,4 +40,14 @@ namespace WisheraApp.DTO
         public bool IsFollowing { get; set; }
         public int MutualFriendsCount { get; set; }
     }
+
+    public class BirthdayReminderDTO
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string AvatarUrl { get; set; } = string.Empty;
+        public DateTime Birthday { get; set; }
+        public int DaysUntilBirthday { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
 } 

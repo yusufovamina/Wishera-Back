@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using WisheraApp.Models;
+using user_service.Models;
 
 namespace user_service.Services
 {
@@ -14,6 +15,9 @@ namespace user_service.Services
 
         public IMongoCollection<User> Users => _database.GetCollection<User>("Users");
         public IMongoCollection<Relationship> Relationships => _database.GetCollection<Relationship>("Relationships");
+        public IMongoCollection<Event> Events => _database.GetCollection<Event>("Events");
+        public IMongoCollection<EventInvitation> EventInvitations => _database.GetCollection<EventInvitation>("EventInvitations");
+        public IMongoCollection<Notification> Notifications => _database.GetCollection<Notification>("Notifications");
         // Other collections are not needed in user-service directly
         // public IMongoCollection<Wishlist> Wishlists => _database.GetCollection<Wishlist>("Wishlists");
         // public IMongoCollection<Like> Likes => _database.GetCollection<Like>("Likes");

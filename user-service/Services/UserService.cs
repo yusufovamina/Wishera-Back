@@ -392,14 +392,14 @@ namespace user_service.Services
 						
 						birthdays.Add(new BirthdayReminderDTO
 						{
-							Id = Guid.NewGuid().ToString(),
-							UserId = user.Id,
+							Id = user.Id,
 							Username = user.Username,
-							AvatarUrl = user.AvatarUrl,
-							Birthday = user.Birthday,
-							IsToday = daysUntil == 0,
-							IsTomorrow = daysUntil == 1,
-							DaysUntilBirthday = daysUntil
+							AvatarUrl = user.AvatarUrl ?? "",
+							Birthday = DateTime.Parse(user.Birthday),
+							DaysUntilBirthday = daysUntil,
+							Message = daysUntil == 0 
+								? $"It's {user.Username}'s birthday today! 🎉"
+								: $"{user.Username}'s birthday is tomorrow! 🎂"
 						});
 					}
 				}

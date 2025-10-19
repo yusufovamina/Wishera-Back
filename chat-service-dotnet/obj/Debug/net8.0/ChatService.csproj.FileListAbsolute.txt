@@ -534,3 +534,14 @@ C:\Users\Halil_mn06\Downloads\git\Wishera-Back\chat-service-dotnet\obj\Debug\net
 C:\Users\Halil_mn06\Downloads\git\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.pdb
 C:\Users\Halil_mn06\Downloads\git\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.genruntimeconfig.cache
 C:\Users\Halil_mn06\Downloads\git\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ref\ChatService.dll
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.csproj.AssemblyReference.cache
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.AssemblyInfoInputs.cache
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.AssemblyInfo.cs
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.csproj.CoreCompileInputs.cache
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.MvcApplicationPartsAssemblyInfo.cs
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.sourcelink.json
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.dll
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\refint\ChatService.dll
+C:\Users\newal\Downloads\Wishera-Back\chat-service-dotnet\obj\Debug\net8.0\ChatService.pdb

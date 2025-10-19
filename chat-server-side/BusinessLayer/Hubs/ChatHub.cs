@@ -26,6 +26,23 @@ namespace BusinessLayer.Hubs
         public async Task SendMessageToUser(string userId, string message)
         {
             var sourceUserId = GetUserIdFromQuery();
+            // Handle special pin/unpin hint messages: broadcast to both participants and DO NOT persist
+            var isPinHint = !string.IsNullOrEmpty(message) && (message.StartsWith("[[pin]]:") || message.StartsWith("[[unpin]]:"));
+            if (isPinHint)
+            {
+                var username = GetUsernameFromQuery();
+                var messageId = Guid.NewGuid().ToString();
+                var sentAt = DateTimeOffset.UtcNow;
+                if (activeUsers.ContainsKey(userId))
+                {
+                    await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
+                }
+                if (!string.IsNullOrEmpty(sourceUserId) && activeUsers.ContainsKey(sourceUserId))
+                {
+                    await Clients.Client(activeUsers[sourceUserId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
+                }
+                return; // Skip persistence for pin/unpin hints
+            }
             if (activeUsers.ContainsKey(userId))
             {
                 var username = GetUsernameFromQuery();
@@ -49,15 +66,19 @@ namespace BusinessLayer.Hubs
                     var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
                         ? $"{sourceUserId}:{userId}"
                         : $"{userId}:{sourceUserId}";
-                    await collection.InsertOneAsync(new
+                    // Do not persist pin/unpin hint messages
+                    if (!isPinHint)
                     {
-                        messageId = Guid.NewGuid().ToString(),
-                        conversationId,
-                        senderUserId = sourceUserId,
-                        recipientUserId = userId,
-                        text = message,
-                        sentAt = DateTimeOffset.UtcNow
-                    });
+                        await collection.InsertOneAsync(new
+                        {
+                            messageId = Guid.NewGuid().ToString(),
+                            conversationId,
+                            senderUserId = sourceUserId,
+                            recipientUserId = userId,
+                            text = message,
+                            sentAt = DateTimeOffset.UtcNow
+                        });
+                    }
                 }
             }
             catch { }
@@ -68,6 +89,21 @@ namespace BusinessLayer.Hubs
             var sourceUserId = GetUserIdFromQuery();
             var messageId = Guid.NewGuid().ToString();
             var sentAt = DateTimeOffset.UtcNow;
+            // Handle special pin/unpin hint messages: broadcast to both participants and DO NOT persist
+            var isPinHint = !string.IsNullOrEmpty(message) && (message.StartsWith("[[pin]]:") || message.StartsWith("[[unpin]]:"));
+            if (isPinHint)
+            {
+                var username = GetUsernameFromQuery();
+                if (activeUsers.ContainsKey(userId))
+                {
+                    await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, replyToMessageId, clientMessageId, sentAt }, username);
+                }
+                if (!string.IsNullOrEmpty(sourceUserId) && activeUsers.ContainsKey(sourceUserId))
+                {
+                    await Clients.Client(activeUsers[sourceUserId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, replyToMessageId, clientMessageId, sentAt }, username);
+                }
+                return; // Skip persistence for pin/unpin hints
+            }
             if (activeUsers.ContainsKey(userId))
             {
                 var username = GetUsernameFromQuery();
@@ -88,17 +124,21 @@ namespace BusinessLayer.Hubs
                     var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
                         ? $"{sourceUserId}:{userId}"
                         : $"{userId}:{sourceUserId}";
-                    await collection.InsertOneAsync(new
+                    // Do not persist pin/unpin hint messages
+                    if (!isPinHint)
                     {
-                        messageId = messageId,
-                        conversationId,
-                        senderUserId = sourceUserId,
-                        recipientUserId = userId,
-                        text = message,
-                        replyToMessageId = replyToMessageId,
-                        clientMessageId = clientMessageId,
-                        sentAt = sentAt
-                    });
+                        await collection.InsertOneAsync(new
+                        {
+                            messageId = messageId,
+                            conversationId,
+                            senderUserId = sourceUserId,
+                            recipientUserId = userId,
+                            text = message,
+                            replyToMessageId = replyToMessageId,
+                            clientMessageId = clientMessageId,
+                            sentAt = sentAt
+                        });
+                    }
                 }
             }
             catch { }

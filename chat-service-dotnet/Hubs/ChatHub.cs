@@ -326,6 +326,70 @@ namespace ChatService.Api.Hubs
             }
             return success;
         }
+
+        // Call signaling methods
+        public async Task InitiateCall(string callerUserId, string calleeUserId, string callType)
+        {
+            var conversationId = GetConversationId(callerUserId, calleeUserId);
+            await Clients.Group(conversationId).SendAsync("callInitiated", new
+            {
+                callerUserId,
+                calleeUserId,
+                callType, // "audio" or "video"
+                callId = Guid.NewGuid().ToString(),
+                timestamp = DateTimeOffset.UtcNow
+            });
+        }
+
+        public async Task AcceptCall(string callerUserId, string calleeUserId, string callId)
+        {
+            var conversationId = GetConversationId(callerUserId, calleeUserId);
+            await Clients.Group(conversationId).SendAsync("callAccepted", new
+            {
+                callerUserId,
+                calleeUserId,
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            });
+        }
+
+        public async Task RejectCall(string callerUserId, string calleeUserId, string callId)
+        {
+            var conversationId = GetConversationId(callerUserId, calleeUserId);
+            await Clients.Group(conversationId).SendAsync("callRejected", new
+            {
+                callerUserId,
+                calleeUserId,
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            });
+        }
+
+        public async Task EndCall(string callerUserId, string calleeUserId, string callId)
+        {
+            var conversationId = GetConversationId(callerUserId, calleeUserId);
+            await Clients.Group(conversationId).SendAsync("callEnded", new
+            {
+                callerUserId,
+                calleeUserId,
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            });
+        }
+
+        public async Task SendCallSignal(string callerUserId, string calleeUserId, string callId, string signalType, object signalData)
+        {
+            var conversationId = GetConversationId(callerUserId, calleeUserId);
+            await Clients.Group(conversationId).SendAsync("callSignal", new
+            {
+                callerUserId,
+                calleeUserId,
+                callId,
+                signalType, // "offer", "answer", "ice-candidate"
+                signalData,
+                timestamp = DateTimeOffset.UtcNow
+            });
+        }
     }
 }
 

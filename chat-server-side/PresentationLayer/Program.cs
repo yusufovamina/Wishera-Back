@@ -714,14 +714,32 @@ app.MapGet("/api/chat/pins", async (
         .Sort(Builders<BsonDocument>.Sort.Descending("createdAt"))
         .ToListAsync();
 
-    var items = cursor.Select((d, idx) => new
+    var items = cursor.Select((d, idx) =>
     {
-        id = d.GetValue("_id", BsonNull.Value).IsBsonNull ? $"local-{idx}" : d["_id"].ToString(),
-        conversationId = key,
-        messageId = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
-        scope = d.GetValue("scope", "global").AsString,
-        pinnedByUserId = d.GetValue("pinnedByUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["pinnedByUserId"].AsString,
-        createdAt = d.GetValue("createdAt", BsonNull.Value).IsBsonNull ? DateTimeOffset.UtcNow : d["createdAt"].ToUniversalTime()
+        var createdAtVal = d.GetValue("createdAt", BsonNull.Value);
+        DateTimeOffset createdAtValue;
+        if (createdAtVal is BsonDateTime bdt)
+        {
+            createdAtValue = bdt.ToUniversalTime();
+        }
+        else if (createdAtVal.IsString && DateTimeOffset.TryParse(createdAtVal.AsString, out var parsed))
+        {
+            createdAtValue = parsed.ToUniversalTime();
+        }
+        else
+        {
+            createdAtValue = DateTimeOffset.UtcNow;
+        }
+
+        return new
+        {
+            id = d.GetValue("_id", BsonNull.Value).IsBsonNull ? $"local-{idx}" : d["_id"].ToString(),
+            conversationId = key,
+            messageId = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
+            scope = d.GetValue("scope", "global").AsString,
+            pinnedByUserId = d.GetValue("pinnedByUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["pinnedByUserId"].AsString,
+            createdAt = createdAtValue
+        };
     });
 
     return Results.Ok(items);

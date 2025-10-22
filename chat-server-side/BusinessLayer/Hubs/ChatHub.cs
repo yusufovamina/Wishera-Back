@@ -431,5 +431,126 @@ namespace BusinessLayer.Hubs
             var httpContext = httpContextAccessor.HttpContext;
             return httpContext?.Request?.Query["username"].ToString();
         }
+
+        // Call signaling methods
+        [HubMethodName("InitiateCall")]
+        public async Task InitiateCall(string calleeUserId, string callType)
+        {
+            var callerUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var callId = Guid.NewGuid().ToString();
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callType, // "audio" or "video"
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callinitiated", payload);
+            }
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callinitiated", payload);
+            }
+        }
+
+        [HubMethodName("AcceptCall")]
+        public async Task AcceptCall(string callerUserId, string callId)
+        {
+            var calleeUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callaccepted", payload);
+            }
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callaccepted", payload);
+            }
+        }
+
+        [HubMethodName("RejectCall")]
+        public async Task RejectCall(string callerUserId, string callId)
+        {
+            var calleeUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callrejected", payload);
+            }
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callrejected", payload);
+            }
+        }
+
+        [HubMethodName("EndCall")]
+        public async Task EndCall(string otherUserId, string callId)
+        {
+            var currentUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
+            
+            var payload = new { 
+                callerUserId = currentUserId, 
+                calleeUserId = otherUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(otherUserId))
+            {
+                await Clients.Client(activeUsers[otherUserId]).SendAsync("callended", payload);
+            }
+            if (activeUsers.ContainsKey(currentUserId))
+            {
+                await Clients.Client(activeUsers[currentUserId]).SendAsync("callended", payload);
+            }
+        }
+
+        [HubMethodName("SendCallSignal")]
+        public async Task SendCallSignal(string otherUserId, string callId, string signalType, object signalData)
+        {
+            var currentUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
+            
+            var payload = new { 
+                callerUserId = currentUserId, 
+                calleeUserId = otherUserId, 
+                callId,
+                signalType, // "offer", "answer", "ice-candidate"
+                signalData,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to the other participant if they're online
+            if (activeUsers.ContainsKey(otherUserId))
+            {
+                await Clients.Client(activeUsers[otherUserId]).SendAsync("callsignal", payload);
+            }
+        }
     }
 }

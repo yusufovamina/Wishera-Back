@@ -26,6 +26,23 @@ namespace BusinessLayer.Hubs
         public async Task SendMessageToUser(string userId, string message)
         {
             var sourceUserId = GetUserIdFromQuery();
+            // Handle special pin/unpin hint messages: broadcast to both participants and DO NOT persist
+            var isPinHint = !string.IsNullOrEmpty(message) && (message.StartsWith("[[pin]]:") || message.StartsWith("[[unpin]]:"));
+            if (isPinHint)
+            {
+                var username = GetUsernameFromQuery();
+                var messageId = Guid.NewGuid().ToString();
+                var sentAt = DateTimeOffset.UtcNow;
+                if (activeUsers.ContainsKey(userId))
+                {
+                    await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
+                }
+                if (!string.IsNullOrEmpty(sourceUserId) && activeUsers.ContainsKey(sourceUserId))
+                {
+                    await Clients.Client(activeUsers[sourceUserId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
+                }
+                return; // Skip persistence for pin/unpin hints
+            }
             if (activeUsers.ContainsKey(userId))
             {
                 var username = GetUsernameFromQuery();
@@ -49,15 +66,19 @@ namespace BusinessLayer.Hubs
                     var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
                         ? $"{sourceUserId}:{userId}"
                         : $"{userId}:{sourceUserId}";
-                    await collection.InsertOneAsync(new
+                    // Do not persist pin/unpin hint messages
+                    if (!isPinHint)
                     {
-                        messageId = Guid.NewGuid().ToString(),
-                        conversationId,
-                        senderUserId = sourceUserId,
-                        recipientUserId = userId,
-                        text = message,
-                        sentAt = DateTimeOffset.UtcNow
-                    });
+                        await collection.InsertOneAsync(new
+                        {
+                            messageId = Guid.NewGuid().ToString(),
+                            conversationId,
+                            senderUserId = sourceUserId,
+                            recipientUserId = userId,
+                            text = message,
+                            sentAt = DateTimeOffset.UtcNow
+                        });
+                    }
                 }
             }
             catch { }
@@ -68,6 +89,21 @@ namespace BusinessLayer.Hubs
             var sourceUserId = GetUserIdFromQuery();
             var messageId = Guid.NewGuid().ToString();
             var sentAt = DateTimeOffset.UtcNow;
+            // Handle special pin/unpin hint messages: broadcast to both participants and DO NOT persist
+            var isPinHint = !string.IsNullOrEmpty(message) && (message.StartsWith("[[pin]]:") || message.StartsWith("[[unpin]]:"));
+            if (isPinHint)
+            {
+                var username = GetUsernameFromQuery();
+                if (activeUsers.ContainsKey(userId))
+                {
+                    await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, replyToMessageId, clientMessageId, sentAt }, username);
+                }
+                if (!string.IsNullOrEmpty(sourceUserId) && activeUsers.ContainsKey(sourceUserId))
+                {
+                    await Clients.Client(activeUsers[sourceUserId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, replyToMessageId, clientMessageId, sentAt }, username);
+                }
+                return; // Skip persistence for pin/unpin hints
+            }
             if (activeUsers.ContainsKey(userId))
             {
                 var username = GetUsernameFromQuery();
@@ -88,17 +124,21 @@ namespace BusinessLayer.Hubs
                     var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
                         ? $"{sourceUserId}:{userId}"
                         : $"{userId}:{sourceUserId}";
-                    await collection.InsertOneAsync(new
+                    // Do not persist pin/unpin hint messages
+                    if (!isPinHint)
                     {
-                        messageId = messageId,
-                        conversationId,
-                        senderUserId = sourceUserId,
-                        recipientUserId = userId,
-                        text = message,
-                        replyToMessageId = replyToMessageId,
-                        clientMessageId = clientMessageId,
-                        sentAt = sentAt
-                    });
+                        await collection.InsertOneAsync(new
+                        {
+                            messageId = messageId,
+                            conversationId,
+                            senderUserId = sourceUserId,
+                            recipientUserId = userId,
+                            text = message,
+                            replyToMessageId = replyToMessageId,
+                            clientMessageId = clientMessageId,
+                            sentAt = sentAt
+                        });
+                    }
                 }
             }
             catch { }
@@ -390,6 +430,127 @@ namespace BusinessLayer.Hubs
         {
             var httpContext = httpContextAccessor.HttpContext;
             return httpContext?.Request?.Query["username"].ToString();
+        }
+
+        // Call signaling methods
+        [HubMethodName("InitiateCall")]
+        public async Task InitiateCall(string calleeUserId, string callType)
+        {
+            var callerUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var callId = Guid.NewGuid().ToString();
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callType, // "audio" or "video"
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callinitiated", payload);
+            }
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callinitiated", payload);
+            }
+        }
+
+        [HubMethodName("AcceptCall")]
+        public async Task AcceptCall(string callerUserId, string callId)
+        {
+            var calleeUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callaccepted", payload);
+            }
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callaccepted", payload);
+            }
+        }
+
+        [HubMethodName("RejectCall")]
+        public async Task RejectCall(string callerUserId, string callId)
+        {
+            var calleeUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callrejected", payload);
+            }
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callrejected", payload);
+            }
+        }
+
+        [HubMethodName("EndCall")]
+        public async Task EndCall(string otherUserId, string callId)
+        {
+            var currentUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
+            
+            var payload = new { 
+                callerUserId = currentUserId, 
+                calleeUserId = otherUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(otherUserId))
+            {
+                await Clients.Client(activeUsers[otherUserId]).SendAsync("callended", payload);
+            }
+            if (activeUsers.ContainsKey(currentUserId))
+            {
+                await Clients.Client(activeUsers[currentUserId]).SendAsync("callended", payload);
+            }
+        }
+
+        [HubMethodName("SendCallSignal")]
+        public async Task SendCallSignal(string otherUserId, string callId, string signalType, object signalData)
+        {
+            var currentUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
+            
+            var payload = new { 
+                callerUserId = currentUserId, 
+                calleeUserId = otherUserId, 
+                callId,
+                signalType, // "offer", "answer", "ice-candidate"
+                signalData,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to the other participant if they're online
+            if (activeUsers.ContainsKey(otherUserId))
+            {
+                await Clients.Client(activeUsers[otherUserId]).SendAsync("callsignal", payload);
+            }
         }
     }
 }

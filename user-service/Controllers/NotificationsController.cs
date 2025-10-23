@@ -12,10 +12,12 @@ namespace user_service.Controllers
     public class NotificationsController : ControllerBase
     {
         private readonly INotificationService _notificationService;
+        private readonly IUserService _userService;
 
-        public NotificationsController(INotificationService notificationService)
+        public NotificationsController(INotificationService notificationService, IUserService userService)
         {
             _notificationService = notificationService;
+            _userService = userService;
         }
 
         private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -101,12 +103,25 @@ namespace user_service.Controllers
             try
             {
                 var userId = GetCurrentUserId() ?? string.Empty;
-                var birthdays = await _notificationService.CreateBirthdayRemindersAsync();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { message = "User not authenticated" });
+                }
+                
+                var birthdays = await _userService.GetUpcomingBirthdaysAsync(userId, daysAhead);
                 return Ok(birthdays);
             }
             catch (ArgumentException ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while fetching birthdays", details = ex.Message });
             }
         }
     }

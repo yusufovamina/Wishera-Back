@@ -232,8 +232,41 @@ var defaultWallpapers = new List<WallpaperCatalogItem>
     new("paper-texture","Paper Texture","Light tactile paper; classic readability.","minimal",false,true,"/wallpapers/paper-texture.svg")
 };
 
-// List default wallpapers
-app.MapGet("/api/chat/wallpapers", () => Results.Ok(defaultWallpapers));
+// List all wallpapers (default + custom)
+app.MapGet("/api/chat/wallpapers", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromQuery] string? userId) =>
+{
+    var allWallpapers = new List<WallpaperCatalogItem>(defaultWallpapers);
+    
+    // Add custom wallpapers if userId is provided
+    if (!string.IsNullOrWhiteSpace(userId))
+    {
+        var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+        var db = mongoClient.GetDatabase(dbName);
+        var wallpapers = db.GetCollection<BsonDocument>("custom_wallpapers");
+
+        var filter = Builders<BsonDocument>.Filter.Eq("userId", userId);
+        var customWallpapers = await wallpapers.Find(filter)
+            .Sort(Builders<BsonDocument>.Sort.Descending("uploadedAt"))
+            .ToListAsync();
+
+        var customWallpaperItems = customWallpapers.Select(doc => new WallpaperCatalogItem(
+            doc["id"].AsString,
+            doc["name"].AsString,
+            doc["description"].AsString,
+            doc["category"].AsString,
+            doc["supportsDark"].AsBoolean,
+            doc["supportsLight"].AsBoolean,
+            doc["previewUrl"].AsString
+        )).ToList();
+
+        allWallpapers.AddRange(customWallpaperItems);
+    }
+
+    return Results.Ok(allWallpapers);
+});
 
 // Preferences storage in Mongo: collection chat_wallpaper_prefs
 app.MapGet("/api/chat/preferences/wallpaper", async (
@@ -253,11 +286,37 @@ app.MapGet("/api/chat/preferences/wallpaper", async (
     var doc = await prefs.Find(Builders<BsonDocument>.Filter.Eq("key", key)).FirstOrDefaultAsync();
     if (doc == null)
     {
-        return Results.Ok(new { wallpaperId = (string?)null, opacity = 0.25 });
+        return Results.Ok(new { wallpaperId = (string?)null, opacity = 0.25, wallpaperUrl = (string?)null });
     }
     var wid = doc.GetValue("wallpaperId", BsonNull.Value).IsBsonNull ? null : doc["wallpaperId"].AsString;
     var opacity = doc.GetValue("opacity", 0.25).ToDouble();
-    return Results.Ok(new { wallpaperId = wid, opacity });
+    var wallpaperUrl = doc.GetValue("wallpaperUrl", BsonNull.Value).IsBsonNull ? null : doc["wallpaperUrl"].AsString;
+    
+    // If no URL is stored but we have a wallpaperId, try to resolve it
+    if (string.IsNullOrEmpty(wallpaperUrl) && !string.IsNullOrEmpty(wid))
+    {
+        // Check if it's a custom wallpaper
+        if (wid.StartsWith("custom_"))
+        {
+            var wallpapers = db.GetCollection<BsonDocument>("custom_wallpapers");
+            var wallpaperDoc = await wallpapers.Find(Builders<BsonDocument>.Filter.Eq("id", wid)).FirstOrDefaultAsync();
+            if (wallpaperDoc != null)
+            {
+                wallpaperUrl = wallpaperDoc["previewUrl"].AsString;
+            }
+        }
+        else
+        {
+            // It's a default wallpaper, construct the URL
+            var defaultWallpaper = defaultWallpapers.FirstOrDefault(w => w.id == wid);
+            if (defaultWallpaper != null)
+            {
+                wallpaperUrl = defaultWallpaper.previewUrl;
+            }
+        }
+    }
+    
+    return Results.Ok(new { wallpaperId = wid, opacity, wallpaperUrl });
 });
 
 app.MapPost("/api/chat/preferences/wallpaper", async (
@@ -280,10 +339,34 @@ app.MapPost("/api/chat/preferences/wallpaper", async (
         return Results.Ok(new { saved = true });
     }
 
+    // Resolve wallpaper URL if not provided
+    var wallpaperUrl = body.wallpaperUrl;
+    if (string.IsNullOrEmpty(wallpaperUrl))
+    {
+        if (body.wallpaperId.StartsWith("custom_"))
+        {
+            var wallpapers = db.GetCollection<BsonDocument>("custom_wallpapers");
+            var wallpaperDoc = await wallpapers.Find(Builders<BsonDocument>.Filter.Eq("id", body.wallpaperId)).FirstOrDefaultAsync();
+            if (wallpaperDoc != null)
+            {
+                wallpaperUrl = wallpaperDoc["previewUrl"].AsString;
+            }
+        }
+        else
+        {
+            var defaultWallpaper = defaultWallpapers.FirstOrDefault(w => w.id == body.wallpaperId);
+            if (defaultWallpaper != null)
+            {
+                wallpaperUrl = defaultWallpaper.previewUrl;
+            }
+        }
+    }
+
     var update = Builders<BsonDocument>.Update
         .Set("key", key)
         .Set("wallpaperId", body.wallpaperId)
-        .Set("opacity", Math.Clamp(body.opacity ?? 0.25, 0, 1));
+        .Set("opacity", Math.Clamp(body.opacity ?? 0.25, 0, 1))
+        .Set("wallpaperUrl", wallpaperUrl ?? "");
     await prefs.UpdateOneAsync(
         Builders<BsonDocument>.Filter.Eq("key", key),
         Builders<BsonDocument>.Update.Combine(update),
@@ -371,6 +454,355 @@ app.MapPost("/api/chat/upload-media", async (HttpRequest request) =>
         return Results.Problem(ex.Message, statusCode: 500);
     }
 });
+
+// === Custom Wallpaper Upload and Management ===
+// Upload custom wallpaper to Cloudinary
+app.MapPost("/api/chat/upload-wallpaper", async (
+    HttpRequest request,
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration) =>
+{
+    if (!request.HasFormContentType)
+    {
+        return Results.BadRequest(new { message = "Form content required" });
+    }
+    var form = await request.ReadFormAsync();
+    var file = form.Files["file"];
+    var userId = form["userId"].FirstOrDefault();
+    var name = form["name"].FirstOrDefault();
+    var description = form["description"].FirstOrDefault();
+    var category = form["category"].FirstOrDefault();
+    var supportsDark = bool.TryParse(form["supportsDark"].FirstOrDefault(), out var dark) && dark;
+    var supportsLight = bool.TryParse(form["supportsLight"].FirstOrDefault(), out var light) && light;
+
+    if (file is null || file.Length == 0)
+    {
+        return Results.BadRequest(new { message = "No file provided" });
+    }
+    if (string.IsNullOrWhiteSpace(userId))
+    {
+        return Results.BadRequest(new { message = "userId is required" });
+    }
+
+    var contentType = (file.ContentType ?? string.Empty).ToLowerInvariant();
+    if (!contentType.StartsWith("image/"))
+    {
+        return Results.BadRequest(new { message = "Only images are allowed for wallpapers" });
+    }
+
+    // Validate file size (max 10MB)
+    if (file.Length > 10 * 1024 * 1024)
+    {
+        return Results.BadRequest(new { message = "File size must be less than 10MB" });
+    }
+
+    try
+    {
+        // Upload to Cloudinary
+        var cloudName = app.Configuration["Cloudinary:CloudName"];
+        var apiKey = app.Configuration["Cloudinary:ApiKey"];
+        var apiSecret = app.Configuration["Cloudinary:ApiSecret"];
+        
+        if (string.IsNullOrEmpty(cloudName) || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiSecret))
+        {
+            var url = app.Configuration["Cloudinary:Url"] ?? string.Empty;
+            if (url.StartsWith("cloudinary://", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var withoutScheme = url.Substring("cloudinary://".Length);
+                    var atIndex = withoutScheme.IndexOf('@');
+                    var colonIndex = withoutScheme.IndexOf(':');
+                    if (atIndex > 0 && colonIndex > 0 && colonIndex < atIndex)
+                    {
+                        apiKey = withoutScheme.Substring(0, colonIndex);
+                        apiSecret = withoutScheme.Substring(colonIndex + 1, atIndex - colonIndex - 1);
+                        cloudName = withoutScheme.Substring(atIndex + 1);
+                    }
+                }
+                catch { }
+            }
+        }
+        
+        if (string.IsNullOrEmpty(cloudName) || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiSecret))
+        {
+            return Results.Problem("Cloudinary is not configured", statusCode: 500);
+        }
+
+        var account = new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret);
+        var cloudinary = new CloudinaryDotNet.Cloudinary(account);
+
+        var uploadParams = new CloudinaryDotNet.Actions.ImageUploadParams
+        {
+            File = new CloudinaryDotNet.FileDescription(file.FileName, file.OpenReadStream()),
+            PublicId = $"wallpapers/custom/{userId}_{Guid.NewGuid()}",
+            Transformation = new CloudinaryDotNet.Transformation().Width(1920).Height(1080).Crop("fill").Quality(85),
+            Folder = "wallpapers/custom"
+        };
+
+        var res = await cloudinary.UploadAsync(uploadParams);
+        if (res.Error != null) return Results.Problem(res.Error.Message, statusCode: 500);
+
+        // Save wallpaper metadata to MongoDB
+        var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+        var db = mongoClient.GetDatabase(dbName);
+        var wallpapers = db.GetCollection<BsonDocument>("custom_wallpapers");
+
+        var wallpaperId = $"custom_{Guid.NewGuid()}";
+        var wallpaperDoc = new BsonDocument
+        {
+            { "id", wallpaperId },
+            { "name", name ?? "Custom Wallpaper" },
+            { "description", description ?? "User uploaded wallpaper" },
+            { "category", category ?? "custom" },
+            { "supportsDark", supportsDark },
+            { "supportsLight", supportsLight },
+            { "previewUrl", res.SecureUrl.ToString() },
+            { "cloudinaryPublicId", res.PublicId },
+            { "userId", userId },
+            { "uploadedAt", DateTime.UtcNow },
+            { "isCustom", true }
+        };
+
+        await wallpapers.InsertOneAsync(wallpaperDoc);
+
+        return Results.Ok(new { 
+            wallpaperId, 
+            url = res.SecureUrl.ToString(),
+            name = name ?? "Custom Wallpaper",
+            description = description ?? "User uploaded wallpaper",
+            category = category ?? "custom",
+            supportsDark,
+            supportsLight
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: 500);
+    }
+});
+
+// Get custom wallpapers for a user
+app.MapGet("/api/chat/custom-wallpapers", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromQuery] string userId) =>
+{
+    if (string.IsNullOrWhiteSpace(userId))
+    {
+        return Results.BadRequest(new { message = "userId is required" });
+    }
+
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var db = mongoClient.GetDatabase(dbName);
+    var wallpapers = db.GetCollection<BsonDocument>("custom_wallpapers");
+
+    var filter = Builders<BsonDocument>.Filter.Eq("userId", userId);
+    var customWallpapers = await wallpapers.Find(filter)
+        .Sort(Builders<BsonDocument>.Sort.Descending("uploadedAt"))
+        .ToListAsync();
+
+    var result = customWallpapers.Select(doc => new WallpaperCatalogItem(
+        doc["id"].AsString,
+        doc["name"].AsString,
+        doc["description"].AsString,
+        doc["category"].AsString,
+        doc["supportsDark"].AsBoolean,
+        doc["supportsLight"].AsBoolean,
+        doc["previewUrl"].AsString
+    )).ToList();
+
+    return Results.Ok(result);
+});
+
+// Delete custom wallpaper
+app.MapDelete("/api/chat/custom-wallpapers/{wallpaperId}", async (
+    string wallpaperId,
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromQuery] string userId) =>
+{
+    if (string.IsNullOrWhiteSpace(wallpaperId) || string.IsNullOrWhiteSpace(userId))
+    {
+        return Results.BadRequest(new { message = "wallpaperId and userId are required" });
+    }
+
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var db = mongoClient.GetDatabase(dbName);
+    var wallpapers = db.GetCollection<BsonDocument>("custom_wallpapers");
+
+    // Find the wallpaper and verify ownership
+    var filter = Builders<BsonDocument>.Filter.And(
+        Builders<BsonDocument>.Filter.Eq("id", wallpaperId),
+        Builders<BsonDocument>.Filter.Eq("userId", userId)
+    );
+
+    var wallpaper = await wallpapers.Find(filter).FirstOrDefaultAsync();
+    if (wallpaper == null)
+    {
+        return Results.NotFound(new { message = "Wallpaper not found or access denied" });
+    }
+
+    try
+    {
+        // Delete from Cloudinary
+        var cloudName = app.Configuration["Cloudinary:CloudName"];
+        var apiKey = app.Configuration["Cloudinary:ApiKey"];
+        var apiSecret = app.Configuration["Cloudinary:ApiSecret"];
+        
+        if (string.IsNullOrEmpty(cloudName) || string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(apiSecret))
+        {
+            var url = app.Configuration["Cloudinary:Url"] ?? string.Empty;
+            if (url.StartsWith("cloudinary://", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var withoutScheme = url.Substring("cloudinary://".Length);
+                    var atIndex = withoutScheme.IndexOf('@');
+                    var colonIndex = withoutScheme.IndexOf(':');
+                    if (atIndex > 0 && colonIndex > 0 && colonIndex < atIndex)
+                    {
+                        apiKey = withoutScheme.Substring(0, colonIndex);
+                        apiSecret = withoutScheme.Substring(colonIndex + 1, atIndex - colonIndex - 1);
+                        cloudName = withoutScheme.Substring(atIndex + 1);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(cloudName) && !string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(apiSecret))
+        {
+            var account = new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret);
+            var cloudinary = new CloudinaryDotNet.Cloudinary(account);
+
+            var deletionParams = new CloudinaryDotNet.Actions.DeletionParams(wallpaper["cloudinaryPublicId"].AsString);
+            await cloudinary.DestroyAsync(deletionParams);
+        }
+
+        // Delete from MongoDB
+        await wallpapers.DeleteOneAsync(filter);
+
+        return Results.Ok(new { deleted = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: 500);
+    }
+});
+
+// === Chat pins persistence (offline-safe) ===
+app.MapGet("/api/chat/pins", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromQuery] string me,
+    [FromQuery] string peer) =>
+{
+    if (string.IsNullOrWhiteSpace(me) || string.IsNullOrWhiteSpace(peer))
+    {
+        return Results.BadRequest(new { message = "me and peer are required" });
+    }
+    var a = me;
+    var b = peer;
+    var key = string.CompareOrdinal(a, b) < 0 ? $"{a}:{b}" : $"{b}:{a}";
+
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var db = mongoClient.GetDatabase(dbName);
+    var pins = db.GetCollection<BsonDocument>("chat_pins");
+
+    var cursor = await pins.Find(Builders<BsonDocument>.Filter.Eq("key", key))
+        .Sort(Builders<BsonDocument>.Sort.Descending("createdAt"))
+        .ToListAsync();
+
+    var items = cursor.Select((d, idx) =>
+    {
+        var createdAtVal = d.GetValue("createdAt", BsonNull.Value);
+        DateTimeOffset createdAtValue;
+        if (createdAtVal is BsonDateTime bdt)
+        {
+            createdAtValue = bdt.ToUniversalTime();
+        }
+        else if (createdAtVal.IsString && DateTimeOffset.TryParse(createdAtVal.AsString, out var parsed))
+        {
+            createdAtValue = parsed.ToUniversalTime();
+        }
+        else
+        {
+            createdAtValue = DateTimeOffset.UtcNow;
+        }
+
+        return new
+        {
+            id = d.GetValue("_id", BsonNull.Value).IsBsonNull ? $"local-{idx}" : d["_id"].ToString(),
+            conversationId = key,
+            messageId = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
+            scope = d.GetValue("scope", "global").AsString,
+            pinnedByUserId = d.GetValue("pinnedByUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["pinnedByUserId"].AsString,
+            createdAt = createdAtValue
+        };
+    });
+
+    return Results.Ok(items);
+});
+
+app.MapPost("/api/chat/pins", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromBody] PinRequest body) =>
+{
+    if (body == null || string.IsNullOrWhiteSpace(body.me) || string.IsNullOrWhiteSpace(body.peer) || string.IsNullOrWhiteSpace(body.messageId))
+    {
+        return Results.BadRequest(new { pinned = false, message = "me, peer, and messageId are required" });
+    }
+    var a = body.me;
+    var b = body.peer;
+    var key = string.CompareOrdinal(a, b) < 0 ? $"{a}:{b}" : $"{b}:{a}";
+
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var db = mongoClient.GetDatabase(dbName);
+    var pins = db.GetCollection<BsonDocument>("chat_pins");
+
+    var filter = Builders<BsonDocument>.Filter.And(
+        Builders<BsonDocument>.Filter.Eq("key", key),
+        Builders<BsonDocument>.Filter.Eq("messageId", body.messageId)
+    );
+    var update = Builders<BsonDocument>.Update
+        .SetOnInsert("key", key)
+        .SetOnInsert("messageId", body.messageId)
+        .Set("scope", string.IsNullOrWhiteSpace(body.scope) ? "global" : body.scope)
+        .Set("pinnedByUserId", body.me)
+        .SetOnInsert("createdAt", DateTimeOffset.UtcNow);
+    var options = new UpdateOptions { IsUpsert = true };
+    await pins.UpdateOneAsync(filter, Builders<BsonDocument>.Update.Combine(update), options);
+
+    return Results.Ok(new { pinned = true, id = body.messageId });
+});
+
+app.MapDelete("/api/chat/pins", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    [FromBody] PinRequest body) =>
+{
+    if (body == null || string.IsNullOrWhiteSpace(body.me) || string.IsNullOrWhiteSpace(body.peer) || string.IsNullOrWhiteSpace(body.messageId))
+    {
+        return Results.BadRequest(new { unpinned = false, message = "me, peer, and messageId are required" });
+    }
+    var a = body.me;
+    var b = body.peer;
+    var key = string.CompareOrdinal(a, b) < 0 ? $"{a}:{b}" : $"{b}:{a}";
+
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var db = mongoClient.GetDatabase(dbName);
+    var pins = db.GetCollection<BsonDocument>("chat_pins");
+
+    var filter = Builders<BsonDocument>.Filter.And(
+        Builders<BsonDocument>.Filter.Eq("key", key),
+        Builders<BsonDocument>.Filter.Eq("messageId", body.messageId)
+    );
+    await pins.DeleteOneAsync(filter);
+
+    return Results.Ok(new { unpinned = true });
+});
 app.Run();
 
 // ===== Types (must follow top-level statements) =====
@@ -383,6 +815,7 @@ public record WallpaperCatalogItem(
     bool supportsLight,
     string previewUrl
 );
-public record SaveWallpaperPref(string me, string peer, string? wallpaperId, double? opacity);
+public record SaveWallpaperPref(string me, string peer, string? wallpaperId, double? opacity, string? wallpaperUrl = null);
 public record EditRequest(string MessageId, string NewText);
 public record DeleteRequest(string MessageId);
+public record PinRequest(string me, string peer, string messageId, string scope);

@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\buildMultiTargeting\gift-wishlist-service.props" />
-</Project>

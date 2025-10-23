@@ -18,7 +18,12 @@ namespace user_service.Controllers
 			_userService = userService;
 		}
 
-		private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+		private string? GetCurrentUserId() 
+		{
+			var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+			Console.WriteLine($"GetCurrentUserId - Raw claim: '{User.FindFirst(ClaimTypes.NameIdentifier)?.Value}', Processed: '{userId}'");
+			return userId;
+		}
 
 		[HttpGet("{id}")]
 		public async Task<ActionResult<UserProfileDTO>> GetById(string id)
@@ -27,6 +32,26 @@ namespace user_service.Controllers
 			{
 				var currentUserId = GetCurrentUserId() ?? string.Empty;
 				var profile = await _userService.GetUserProfileAsync(id, currentUserId);
+				return Ok(profile);
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+		}
+
+		[HttpGet("profile")]
+		public async Task<ActionResult<UserProfileDTO>> GetProfile()
+		{
+			try
+			{
+				var userId = GetCurrentUserId() ?? string.Empty;
+				Console.WriteLine($"GetProfile - UserId: '{userId}', Length: {userId.Length}");
+				var profile = await _userService.GetUserProfileAsync(userId, userId);
 				return Ok(profile);
 			}
 			catch (KeyNotFoundException)
@@ -151,6 +176,57 @@ namespace user_service.Controllers
 				var currentUserId = GetCurrentUserId() ?? string.Empty;
 				var results = await _userService.GetFollowersAsync(id, currentUserId, page, pageSize);
 				return Ok(results);
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
+		}
+
+		[HttpGet("test")]
+		public ActionResult<object> Test()
+		{
+			return Ok(new { message = "Service is working", timestamp = DateTime.UtcNow });
+		}
+
+		[HttpGet("debug")]
+		public ActionResult<object> Debug()
+		{
+			var userId = GetCurrentUserId();
+			var claims = User.Claims.Select(c => new { c.Type, c.Value }).ToList();
+			return Ok(new { 
+				userId = userId,
+				userIdLength = userId?.Length ?? 0,
+				claims = claims,
+				isAuthenticated = User.Identity?.IsAuthenticated ?? false
+			});
+		}
+
+		[HttpGet("my-friends")]
+		public async Task<ActionResult<List<UserSearchDTO>>> GetMyFriends([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+		{
+			try
+			{
+				var userId = GetCurrentUserId() ?? string.Empty;
+				if (string.IsNullOrEmpty(userId))
+				{
+					return BadRequest(new { message = "User not authenticated" });
+				}
+				
+				// Get the current user to find their following list
+				var user = await _userService.GetUserByIdAsync(userId);
+				if (user == null)
+				{
+					return NotFound(new { message = "User not found" });
+				}
+				
+				// Get friends from following list
+				var friends = await _userService.GetFollowingAsync(userId, userId, page, pageSize);
+				return Ok(friends);
 			}
 			catch (KeyNotFoundException)
 			{

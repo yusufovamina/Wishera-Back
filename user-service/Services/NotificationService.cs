@@ -353,7 +353,17 @@ namespace user_service.Services
                 {
                     if (string.IsNullOrEmpty(friend.Birthday)) continue;
 
-                    var birthday = DateTime.Parse(friend.Birthday);
+                    // Try to parse the birthday with different formats
+                    DateTime birthday;
+                    if (!DateTime.TryParse(friend.Birthday, out birthday))
+                    {
+                        // Try parsing with specific format
+                        if (!DateTime.TryParseExact(friend.Birthday, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out birthday))
+                        {
+                            // Skip if we can't parse the birthday
+                            continue;
+                        }
+                    }
                     var birthdayThisYear = new DateTime(today.Year, birthday.Month, birthday.Day);
                     var daysUntilBirthday = (birthdayThisYear - today).Days;
 

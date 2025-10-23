@@ -86,5 +86,58 @@ namespace user_service.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
+
+        [HttpPut("{invitationId}/change-response")]
+        public async Task<ActionResult<EventInvitationDTO>> ChangeInvitationResponse(string invitationId, [FromBody] RespondToInvitationDTO responseDto)
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var invitation = await _eventService.ChangeInvitationResponseAsync(invitationId, userId, responseDto);
+                return Ok(invitation);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("all")]
+        public async Task<ActionResult<EventInvitationListDTO>> GetAllMyInvitations([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var invitations = await _eventService.GetUserInvitationsAsync(userId, page, pageSize);
+                return Ok(invitations);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("statistics")]
+        public async Task<ActionResult<object>> GetInvitationStatistics()
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var statistics = await _eventService.GetUserInvitationStatisticsAsync(userId);
+                return Ok(statistics);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
     }
 }

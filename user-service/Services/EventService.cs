@@ -18,6 +18,7 @@ namespace user_service.Services
         Task<EventInvitationListDTO> GetUserInvitationsAsync(string userId, int page = 1, int pageSize = 10);
         Task<bool> IsUserInvitedToEventAsync(string eventId, string userId);
         Task<List<EventInvitationDTO>> GetEventInvitationsAsync(string eventId, string userId);
+        Task<List<Event>> GetAllEventsAsync();
     }
 
     public class EventService : IEventService
@@ -173,84 +174,95 @@ namespace user_service.Services
         {
             if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 
-            var cacheKey = $"user:events:{userId}:{page}:{pageSize}";
-            return await _cache.GetOrSetAsync(cacheKey, async () =>
+            Console.WriteLine($"GetUserEventsAsync called with userId: {userId}");
+            
+            // Temporarily disable caching to fix the cache invalidation issue
+            // Get all events for the user (no pagination in cache)
+            
+            // First, let's get ALL events to debug
+            var allEventsInDb = await _dbContext.Events.Find(_ => true).ToListAsync();
+            Console.WriteLine($"Total events in database: {allEventsInDb.Count}");
+            foreach (var evt in allEventsInDb)
             {
-                var skip = (page - 1) * pageSize;
-                var events = await _dbContext.Events
-                    .Find(e => e.CreatorId == userId && !e.IsCancelled)
-                    .Sort(Builders<Event>.Sort.Descending(e => e.EventDate))
-                    .Skip(skip)
-                    .Limit(pageSize)
+                Console.WriteLine($"All Events - Event: {evt.Title} (ID: {evt.Id}, CreatorId: {evt.CreatorId}, IsCancelled: {evt.IsCancelled})");
+            }
+            
+            // Now filter for the user's events
+            var filter = Builders<Event>.Filter.And(
+                Builders<Event>.Filter.Eq(e => e.CreatorId, userId),
+                Builders<Event>.Filter.Eq(e => e.IsCancelled, false)
+            );
+            
+            var allEvents = await _dbContext.Events
+                .Find(filter)
+                .Sort(Builders<Event>.Sort.Descending(e => e.EventDate))
+                .ToListAsync();
+
+            Console.WriteLine($"Found {allEvents.Count} events for user {userId}");
+            foreach (var evt in allEvents)
+            {
+                Console.WriteLine($"Event: {evt.Title} (ID: {evt.Id}, CreatorId: {evt.CreatorId}, IsCancelled: {evt.IsCancelled})");
+            }
+
+            var eventDtos = new List<EventDTO>();
+            foreach (var eventEntity in allEvents)
+            {
+                var creator = await _dbContext.Users.Find(u => u.Id == eventEntity.CreatorId).FirstOrDefaultAsync();
+                if (creator == null) continue;
+
+                var invitations = await _dbContext.EventInvitations
+                    .Find(i => i.EventId == eventEntity.Id)
                     .ToListAsync();
 
-                var totalCount = await _dbContext.Events
-                    .CountDocumentsAsync(e => e.CreatorId == userId && !e.IsCancelled);
-
-                var eventDtos = new List<EventDTO>();
-                foreach (var eventEntity in events)
+                eventDtos.Add(new EventDTO
                 {
-                    var creator = await _dbContext.Users.Find(u => u.Id == eventEntity.CreatorId).FirstOrDefaultAsync();
-                    if (creator == null) continue;
+                    Id = eventEntity.Id,
+                    Title = eventEntity.Title,
+                    Description = eventEntity.Description,
+                    EventDate = eventEntity.EventDate,
+                    EventTime = eventEntity.EventTime,
+                    Location = eventEntity.Location,
+                    AdditionalNotes = eventEntity.AdditionalNotes,
+                    CreatorId = eventEntity.CreatorId,
+                    CreatorUsername = creator.Username,
+                    CreatorAvatarUrl = creator.AvatarUrl ?? "",
+                    InviteeIds = eventEntity.InviteeIds,
+                    CreatedAt = eventEntity.CreatedAt,
+                    UpdatedAt = eventEntity.UpdatedAt,
+                    IsCancelled = eventEntity.IsCancelled,
+                    EventType = eventEntity.EventType,
+                    AcceptedCount = invitations.Count(i => i.Status == InvitationStatus.Accepted),
+                    DeclinedCount = invitations.Count(i => i.Status == InvitationStatus.Declined),
+                    PendingCount = invitations.Count(i => i.Status == InvitationStatus.Pending)
+                });
+            }
 
-                    var invitations = await _dbContext.EventInvitations
-                        .Find(i => i.EventId == eventEntity.Id)
-                        .ToListAsync();
-
-                    eventDtos.Add(new EventDTO
-                    {
-                        Id = eventEntity.Id,
-                        Title = eventEntity.Title,
-                        Description = eventEntity.Description,
-                        EventDate = eventEntity.EventDate,
-                        EventTime = eventEntity.EventTime,
-                        Location = eventEntity.Location,
-                        AdditionalNotes = eventEntity.AdditionalNotes,
-                        CreatorId = eventEntity.CreatorId,
-                        CreatorUsername = creator.Username,
-                        CreatorAvatarUrl = creator.AvatarUrl ?? "",
-                        InviteeIds = eventEntity.InviteeIds,
-                        CreatedAt = eventEntity.CreatedAt,
-                        UpdatedAt = eventEntity.UpdatedAt,
-                        IsCancelled = eventEntity.IsCancelled,
-                        EventType = eventEntity.EventType,
-                        AcceptedCount = invitations.Count(i => i.Status == InvitationStatus.Accepted),
-                        DeclinedCount = invitations.Count(i => i.Status == InvitationStatus.Declined),
-                        PendingCount = invitations.Count(i => i.Status == InvitationStatus.Pending)
-                    });
-                }
-
-                return new EventListDTO
-                {
-                    Events = eventDtos,
-                    TotalCount = (int)totalCount,
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalPages = (int)Math.Ceiling((double)totalCount / pageSize)
-                };
-            }, TimeSpan.FromMinutes(10));
+            return new EventListDTO
+            {
+                Events = eventDtos,
+                TotalCount = eventDtos.Count,
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = (int)Math.Ceiling((double)eventDtos.Count / pageSize)
+            };
         }
 
         public async Task<EventListDTO> GetInvitedEventsAsync(string userId, int page = 1, int pageSize = 10)
         {
             if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 
-            var cacheKey = $"user:invited-events:{userId}:{page}:{pageSize}";
-            return await _cache.GetOrSetAsync(cacheKey, async () =>
+            // Use a simpler cache key without pagination to make cache clearing easier
+            var cacheKey = $"user:invited-events:{userId}";
+            var cachedData = await _cache.GetOrSetAsync(cacheKey, async () =>
             {
-                var skip = (page - 1) * pageSize;
-                var invitations = await _dbContext.EventInvitations
+                // Get ALL invitations for this user (no pagination in cache)
+                var allInvitations = await _dbContext.EventInvitations
                     .Find(i => i.InviteeId == userId)
                     .Sort(Builders<EventInvitation>.Sort.Descending(i => i.InvitedAt))
-                    .Skip(skip)
-                    .Limit(pageSize)
                     .ToListAsync();
 
-                var totalCount = await _dbContext.EventInvitations
-                    .CountDocumentsAsync(i => i.InviteeId == userId);
-
                 var eventDtos = new List<EventDTO>();
-                foreach (var invitation in invitations)
+                foreach (var invitation in allInvitations)
                 {
                     var eventEntity = await _dbContext.Events.Find(e => e.Id == invitation.EventId).FirstOrDefaultAsync();
                     if (eventEntity == null || eventEntity.IsCancelled) continue;
@@ -258,7 +270,7 @@ namespace user_service.Services
                     var creator = await _dbContext.Users.Find(u => u.Id == eventEntity.CreatorId).FirstOrDefaultAsync();
                     if (creator == null) continue;
 
-                    var allInvitations = await _dbContext.EventInvitations
+                    var allEventInvitations = await _dbContext.EventInvitations
                         .Find(i => i.EventId == eventEntity.Id)
                         .ToListAsync();
 
@@ -279,22 +291,30 @@ namespace user_service.Services
                         UpdatedAt = eventEntity.UpdatedAt,
                         IsCancelled = eventEntity.IsCancelled,
                         EventType = eventEntity.EventType,
-                        AcceptedCount = allInvitations.Count(i => i.Status == InvitationStatus.Accepted),
-                        DeclinedCount = allInvitations.Count(i => i.Status == InvitationStatus.Declined),
-                        PendingCount = allInvitations.Count(i => i.Status == InvitationStatus.Pending),
-                        UserResponse = invitation.Status
+                        AcceptedCount = allEventInvitations.Count(i => i.Status == InvitationStatus.Accepted),
+                        DeclinedCount = allEventInvitations.Count(i => i.Status == InvitationStatus.Declined),
+                        PendingCount = allEventInvitations.Count(i => i.Status == InvitationStatus.Pending),
+                        UserResponse = invitation.Status,
+                        InvitationId = invitation.Id
                     });
                 }
 
-                return new EventListDTO
-                {
-                    Events = eventDtos,
-                    TotalCount = (int)totalCount,
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalPages = (int)Math.Ceiling((double)totalCount / pageSize)
-                };
+                return eventDtos;
             }, TimeSpan.FromMinutes(10));
+
+            // Apply pagination to the cached data
+            var totalCount = cachedData.Count;
+            var skip = (page - 1) * pageSize;
+            var paginatedEvents = cachedData.Skip(skip).Take(pageSize).ToList();
+
+            return new EventListDTO
+            {
+                Events = paginatedEvents,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize,
+                TotalPages = (int)Math.Ceiling((double)totalCount / pageSize)
+            };
         }
 
         public async Task<EventDTO> UpdateEventAsync(string eventId, string userId, UpdateEventDTO updateEventDto)
@@ -318,7 +338,61 @@ namespace user_service.Services
 
             await _dbContext.Events.UpdateOneAsync(e => e.Id == eventId, updateDefinition);
 
-            // Clear cache
+            // Handle invitee updates
+            if (updateEventDto.InviteeIds != null)
+            {
+                // Get current invitees
+                var currentInvitees = eventEntity.InviteeIds ?? new List<string>();
+                var newInvitees = updateEventDto.InviteeIds;
+
+                // Find new invitees (not in current list)
+                var inviteesToAdd = newInvitees.Except(currentInvitees).ToList();
+                
+                // Find removed invitees (in current list but not in new list)
+                var inviteesToRemove = currentInvitees.Except(newInvitees).ToList();
+
+                // Update event with new invitee list
+                await _dbContext.Events.UpdateOneAsync(
+                    e => e.Id == eventId, 
+                    Builders<Event>.Update.Set(e => e.InviteeIds, newInvitees)
+                );
+
+                // Create invitations for new invitees
+                if (inviteesToAdd.Any())
+                {
+                    var newInvitations = inviteesToAdd.Select(inviteeId => new EventInvitation
+                    {
+                        EventId = eventId,
+                        InviterId = userId,
+                        InviteeId = inviteeId,
+                        Status = InvitationStatus.Pending,
+                        InvitedAt = DateTime.UtcNow
+                    }).ToList();
+
+                    await _dbContext.EventInvitations.InsertManyAsync(newInvitations);
+
+                    // Send invitation notifications to new invitees
+                    foreach (var inviteeId in inviteesToAdd)
+                    {
+                        await _notificationService.CreateEventInvitationNotificationAsync(
+                            inviteeId,
+                            userId,
+                            eventId,
+                            eventEntity.Title
+                        );
+                    }
+                }
+
+                // Remove invitations for removed invitees
+                if (inviteesToRemove.Any())
+                {
+                    await _dbContext.EventInvitations.DeleteManyAsync(
+                        i => i.EventId == eventId && inviteesToRemove.Contains(i.InviteeId)
+                    );
+                }
+            }
+
+            // Clear cache - remove all possible cache keys for this user's events
             await _cache.RemoveAsync($"event:{eventId}:{userId}");
             await _cache.RemoveAsync($"user:events:{userId}");
 
@@ -351,7 +425,7 @@ namespace user_service.Services
                 );
             }
 
-            // Clear cache
+            // Clear cache - remove all possible cache keys for this user's events
             await _cache.RemoveAsync($"event:{eventId}:{userId}");
             await _cache.RemoveAsync($"user:events:{userId}");
 
@@ -371,7 +445,7 @@ namespace user_service.Services
             await _dbContext.Events.DeleteOneAsync(e => e.Id == eventId);
             await _dbContext.EventInvitations.DeleteManyAsync(i => i.EventId == eventId);
 
-            // Clear cache
+            // Clear cache - remove all possible cache keys for this user's events
             await _cache.RemoveAsync($"event:{eventId}:{userId}");
             await _cache.RemoveAsync($"user:events:{userId}");
 
@@ -414,7 +488,7 @@ namespace user_service.Services
             // Clear cache
             await _cache.RemoveAsync($"user:invited-events:{userId}");
 
-            return new EventInvitationDTO
+            var invitationDto = new EventInvitationDTO
             {
                 Id = invitation.Id,
                 EventId = invitation.EventId,
@@ -427,6 +501,166 @@ namespace user_service.Services
                 InviterUsername = inviter?.Username ?? "",
                 InviterAvatarUrl = inviter?.AvatarUrl ?? ""
             };
+
+            if (eventEntity != null)
+            {
+                SetInvitationStatusDisplayInfo(invitationDto, eventEntity);
+            }
+
+            return invitationDto;
+        }
+
+        public async Task<EventInvitationDTO> ChangeInvitationResponseAsync(string invitationId, string userId, RespondToInvitationDTO responseDto)
+        {
+            if (!IsValidObjectId(invitationId)) throw new ArgumentException("Invalid invitation ID format.");
+            if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+
+            var invitation = await _dbContext.EventInvitations.Find(i => i.Id == invitationId).FirstOrDefaultAsync();
+            if (invitation == null) throw new KeyNotFoundException("Invitation not found.");
+            if (invitation.InviteeId != userId) throw new UnauthorizedAccessException("You can only change responses for your own invitations.");
+
+            // Check if the event is still active (not cancelled)
+            var eventEntity = await _dbContext.Events.Find(e => e.Id == invitation.EventId).FirstOrDefaultAsync();
+            if (eventEntity == null) throw new KeyNotFoundException("Event not found.");
+            if (eventEntity.IsCancelled) throw new InvalidOperationException("Cannot change response for a cancelled event.");
+
+            // Check if the event date has passed
+            if (eventEntity.EventDate < DateTime.UtcNow.Date)
+            {
+                throw new InvalidOperationException("Cannot change response for past events.");
+            }
+
+            var previousStatus = invitation.Status;
+            var updateDefinition = Builders<EventInvitation>.Update
+                .Set(i => i.Status, responseDto.Status)
+                .Set(i => i.RespondedAt, DateTime.UtcNow)
+                .Set(i => i.ResponseMessage, responseDto.ResponseMessage);
+
+            await _dbContext.EventInvitations.UpdateOneAsync(i => i.Id == invitationId, updateDefinition);
+
+            var inviter = await _dbContext.Users.Find(u => u.Id == invitation.InviterId).FirstOrDefaultAsync();
+
+            if (eventEntity != null && inviter != null)
+            {
+                // Send response change notification to event creator
+                await _notificationService.CreateEventResponseNotificationAsync(
+                    invitation.InviterId,
+                    userId,
+                    invitation.EventId,
+                    eventEntity.Title,
+                    responseDto.Status,
+                    responseDto.ResponseMessage
+                );
+            }
+
+            // Clear relevant caches
+            await _cache.RemoveAsync($"user:invited-events:{userId}");
+            await _cache.RemoveAsync($"user:invitations:{userId}:*");
+            await _cache.RemoveAsync($"event:{invitation.EventId}:*");
+
+            var invitationDto = new EventInvitationDTO
+            {
+                Id = invitation.Id,
+                EventId = invitation.EventId,
+                InviteeId = invitation.InviteeId,
+                InviterId = invitation.InviterId,
+                Status = responseDto.Status,
+                InvitedAt = invitation.InvitedAt,
+                RespondedAt = DateTime.UtcNow,
+                ResponseMessage = responseDto.ResponseMessage,
+                InviterUsername = inviter?.Username ?? "",
+                InviterAvatarUrl = inviter?.AvatarUrl ?? "",
+                Event = new EventDTO
+                {
+                    Id = eventEntity.Id,
+                    Title = eventEntity.Title,
+                    Description = eventEntity.Description,
+                    EventDate = eventEntity.EventDate,
+                    EventTime = eventEntity.EventTime,
+                    Location = eventEntity.Location,
+                    AdditionalNotes = eventEntity.AdditionalNotes,
+                    CreatorId = eventEntity.CreatorId,
+                    CreatorUsername = inviter?.Username ?? "",
+                    CreatorAvatarUrl = inviter?.AvatarUrl ?? "",
+                    EventType = eventEntity.EventType,
+                    IsCancelled = eventEntity.IsCancelled
+                }
+            };
+
+            SetInvitationStatusDisplayInfo(invitationDto, eventEntity);
+            return invitationDto;
+        }
+
+        private void SetInvitationStatusDisplayInfo(EventInvitationDTO invitationDto, Event eventEntity)
+        {
+            // Determine if response can be changed
+            invitationDto.CanChangeResponse = !eventEntity.IsCancelled && eventEntity.EventDate >= DateTime.UtcNow.Date;
+
+            // Set status display text and color
+            switch (invitationDto.Status)
+            {
+                case InvitationStatus.Pending:
+                    invitationDto.StatusDisplayText = "Pending Response";
+                    invitationDto.StatusColor = "#FFA500"; // Orange
+                    break;
+                case InvitationStatus.Accepted:
+                    invitationDto.StatusDisplayText = "Accepted";
+                    invitationDto.StatusColor = "#28A745"; // Green
+                    break;
+                case InvitationStatus.Declined:
+                    invitationDto.StatusDisplayText = "Declined";
+                    invitationDto.StatusColor = "#DC3545"; // Red
+                    break;
+                case InvitationStatus.Maybe:
+                    invitationDto.StatusDisplayText = "Maybe";
+                    invitationDto.StatusColor = "#6C757D"; // Gray
+                    break;
+                default:
+                    invitationDto.StatusDisplayText = "Unknown";
+                    invitationDto.StatusColor = "#6C757D";
+                    break;
+            }
+        }
+
+        public async Task<object> GetUserInvitationStatisticsAsync(string userId)
+        {
+            if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
+
+            var cacheKey = $"user:invitation-stats:{userId}";
+            return await _cache.GetOrSetAsync(cacheKey, async () =>
+            {
+                var invitations = await _dbContext.EventInvitations
+                    .Find(i => i.InviteeId == userId)
+                    .ToListAsync();
+
+                var totalInvitations = invitations.Count;
+                var pendingCount = invitations.Count(i => i.Status == InvitationStatus.Pending);
+                var acceptedCount = invitations.Count(i => i.Status == InvitationStatus.Accepted);
+                var declinedCount = invitations.Count(i => i.Status == InvitationStatus.Declined);
+                var maybeCount = invitations.Count(i => i.Status == InvitationStatus.Maybe);
+
+                // Get upcoming events count (accepted invitations for future events)
+                var upcomingEventsCount = 0;
+                foreach (var invitation in invitations.Where(i => i.Status == InvitationStatus.Accepted))
+                {
+                    var eventEntity = await _dbContext.Events.Find(e => e.Id == invitation.EventId).FirstOrDefaultAsync();
+                    if (eventEntity != null && eventEntity.EventDate >= DateTime.UtcNow.Date && !eventEntity.IsCancelled)
+                    {
+                        upcomingEventsCount++;
+                    }
+                }
+
+                return new
+                {
+                    TotalInvitations = totalInvitations,
+                    PendingCount = pendingCount,
+                    AcceptedCount = acceptedCount,
+                    DeclinedCount = declinedCount,
+                    MaybeCount = maybeCount,
+                    UpcomingEventsCount = upcomingEventsCount,
+                    ResponseRate = totalInvitations > 0 ? Math.Round((double)(acceptedCount + declinedCount + maybeCount) / totalInvitations * 100, 1) : 0
+                };
+            }, TimeSpan.FromMinutes(15));
         }
 
         public async Task<EventInvitationListDTO> GetUserInvitationsAsync(string userId, int page = 1, int pageSize = 10)
@@ -455,7 +689,7 @@ namespace user_service.Services
 
                     if (eventEntity != null && inviter != null)
                     {
-                        invitationDtos.Add(new EventInvitationDTO
+                        var invitationDto = new EventInvitationDTO
                         {
                             Id = invitation.Id,
                             EventId = invitation.EventId,
@@ -482,7 +716,10 @@ namespace user_service.Services
                                 EventType = eventEntity.EventType,
                                 IsCancelled = eventEntity.IsCancelled
                             }
-                        });
+                        };
+
+                        SetInvitationStatusDisplayInfo(invitationDto, eventEntity);
+                        invitationDtos.Add(invitationDto);
                     }
                 }
 
@@ -547,6 +784,11 @@ namespace user_service.Services
             }
 
             return invitationDtos;
+        }
+
+        public async Task<List<Event>> GetAllEventsAsync()
+        {
+            return await _dbContext.Events.Find(_ => true).ToListAsync();
         }
     }
 }

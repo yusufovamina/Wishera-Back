@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using user_service.Services;
 using WisheraApp.DTO;
+using MongoDB.Driver;
 
 namespace user_service.Controllers
 {
@@ -20,6 +21,53 @@ namespace user_service.Controllers
 
         private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
+        [HttpGet("debug-all-invitations")]
+        public async Task<ActionResult> DebugAllInvitations()
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var allInvitations = await _dbContext.EventInvitations.Find(_ => true).ToListAsync();
+                return Ok(new { 
+                    userId = userId,
+                    totalInvitations = allInvitations.Count,
+                    invitations = allInvitations.Select(i => new { 
+                        id = i.Id, 
+                        eventId = i.EventId, 
+                        inviteeId = i.InviteeId, 
+                        inviterId = i.InviterId,
+                        status = i.Status,
+                        invitedAt = i.InvitedAt,
+                        respondedAt = i.RespondedAt
+                    })
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("debug/user-id")]
+        public ActionResult DebugUserId()
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var isValid = MongoDB.Bson.ObjectId.TryParse(userId, out var objectId);
+                return Ok(new { 
+                    userId = userId,
+                    userIdLength = userId.Length,
+                    isValid = isValid,
+                    objectId = isValid ? objectId.ToString() : null
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
         [HttpPost]
         public async Task<ActionResult<EventDTO>> CreateEvent([FromBody] CreateEventDTO createEventDto)
         {
@@ -36,27 +84,6 @@ namespace user_service.Controllers
             catch (KeyNotFoundException ex)
             {
                 return NotFound(new { message = ex.Message });
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Unauthorized(new { message = ex.Message });
-            }
-        }
-
-        [HttpGet("{id}")]
-        public async Task<ActionResult<EventDTO>> GetEvent(string id)
-        {
-            try
-            {
-                var userId = GetCurrentUserId() ?? string.Empty;
-                var eventDto = await _eventService.GetEventByIdAsync(id, userId);
-                if (eventDto == null)
-                    return NotFound(new { message = "Event not found" });
-                return Ok(eventDto);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { message = ex.Message });
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -91,6 +118,42 @@ namespace user_service.Controllers
             catch (ArgumentException ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("my-invitations")]
+        public async Task<ActionResult<EventInvitationListDTO>> GetMyInvitations([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var invitations = await _eventService.GetUserInvitationsAsync(userId, page, pageSize);
+                return Ok(invitations);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<EventDTO>> GetEvent(string id)
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var eventDto = await _eventService.GetEventByIdAsync(id, userId);
+                if (eventDto == null)
+                    return NotFound(new { message = "Event not found" });
+                return Ok(eventDto);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
             }
         }
 
@@ -171,6 +234,29 @@ namespace user_service.Controllers
                 var userId = GetCurrentUserId() ?? string.Empty;
                 var invitations = await _eventService.GetEventInvitationsAsync(id, userId);
                 return Ok(invitations);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("invitations/{invitationId}/respond")]
+        public async Task<ActionResult<EventInvitationDTO>> RespondToInvitation(string invitationId, [FromBody] RespondToInvitationDTO responseDto)
+        {
+            try
+            {
+                var userId = GetCurrentUserId() ?? string.Empty;
+                var invitation = await _eventService.RespondToInvitationAsync(invitationId, userId, responseDto);
+                return Ok(invitation);
             }
             catch (ArgumentException ex)
             {

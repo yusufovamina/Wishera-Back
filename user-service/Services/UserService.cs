@@ -24,7 +24,12 @@ namespace user_service.Services
 			_cache = cache;
 		}
 
-		private bool IsValidObjectId(string id) => MongoDB.Bson.ObjectId.TryParse(id, out _);
+		private bool IsValidObjectId(string id) 
+		{
+			if (string.IsNullOrEmpty(id)) return false;
+			// Allow 24-character hex strings (MongoDB ObjectId format)
+			return id.Length == 24 && System.Text.RegularExpressions.Regex.IsMatch(id, @"^[0-9a-fA-F]{24}$");
+		}
 
 		public async Task<UserProfileDTO> GetUserProfileAsync(string userId, string currentUserId)
 		{
@@ -395,7 +400,7 @@ namespace user_service.Services
 							Id = user.Id,
 							Username = user.Username,
 							AvatarUrl = user.AvatarUrl ?? "",
-							Birthday = DateTime.Parse(user.Birthday),
+							Birthday = DateTime.TryParse(user.Birthday, out var parsedBirthday) ? parsedBirthday : DateTime.MinValue,
 							DaysUntilBirthday = daysUntil,
 							Message = daysUntil == 0 
 								? $"It's {user.Username}'s birthday today! 🎉"

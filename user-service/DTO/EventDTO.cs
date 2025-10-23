@@ -75,6 +75,7 @@ namespace WisheraApp.DTO
         public int DeclinedCount { get; set; }
         public int PendingCount { get; set; }
         public InvitationStatus? UserResponse { get; set; }
+        public string? InvitationId { get; set; }
     }
 
     public class EventInvitationDTO
@@ -90,6 +91,9 @@ namespace WisheraApp.DTO
         public EventDTO? Event { get; set; }
         public string InviterUsername { get; set; } = string.Empty;
         public string InviterAvatarUrl { get; set; } = string.Empty;
+        public bool CanChangeResponse { get; set; } = true;
+        public string StatusDisplayText { get; set; } = string.Empty;
+        public string StatusColor { get; set; } = string.Empty;
     }
 
     public class RespondToInvitationDTO

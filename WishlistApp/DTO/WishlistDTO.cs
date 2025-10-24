@@ -111,5 +111,6 @@ namespace WisheraApp.DTO
         public int LikeCount { get; set; }
         public int CommentCount { get; set; }
         public bool IsLiked { get; set; }
+        public bool IsOwner { get; set; } // Whether the current user owns this wishlist
     }
 } 

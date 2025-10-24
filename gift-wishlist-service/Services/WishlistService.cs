@@ -254,7 +254,8 @@ namespace gift_wishlist_service.Services
                     Description = w.Description,
                     Category = w.Category,
                     IsPublic = w.IsPublic,
-                    CreatedAt = w.CreatedAt
+                    CreatedAt = w.CreatedAt,
+                    IsOwner = w.UserId == currentUserId
                 });
             }
             return wishlistDTOs;
@@ -361,7 +362,8 @@ namespace gift_wishlist_service.Services
                     AvatarUrl = owner.AvatarUrl,
                     LikeCount = likeCount,
                     CommentCount = commentCount,
-                    IsLiked = isLiked
+                    IsLiked = isLiked,
+                    IsOwner = w.UserId == currentUserId
                 });
             }
 				return feedDTOs;
@@ -634,7 +636,8 @@ namespace gift_wishlist_service.Services
                         AvatarUrl = owner.AvatarUrl,
                         LikeCount = (int)likeCount,
                         CommentCount = (int)commentCount,
-                        IsLiked = isLiked
+                        IsLiked = isLiked,
+                        IsOwner = w.UserId == currentUserId
                     });
                 }
 

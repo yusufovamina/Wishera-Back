@@ -144,6 +144,69 @@ namespace BusinessLayer.Hubs
             catch { }
         }
 
+        public async Task SendMessageToUserWithCustomData(string userId, string message, Dictionary<string, object>? customData = null, string? replyToMessageId = null, string? clientMessageId = null)
+        {
+            var sourceUserId = GetUserIdFromQuery();
+            var messageId = clientMessageId ?? Guid.NewGuid().ToString();
+            var sentAt = DateTimeOffset.UtcNow;
+            
+            if (activeUsers.ContainsKey(userId))
+            {
+                var username = GetUsernameFromQuery();
+                await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, customData, replyToMessageId, clientMessageId, sentAt }, username);
+            }
+            
+            // Persist to Mongo if configured
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient != null && configuration != null)
+                {
+                    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                    var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                    var db = mongoClient.GetDatabase(dbName);
+                    var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+                    if (!string.IsNullOrEmpty(sourceUserId) && !string.IsNullOrEmpty(userId))
+                    {
+                        var doc = new MongoDB.Bson.BsonDocument
+                        {
+                            { "messageId", messageId },
+                            { "conversationId", string.Join("_", new[] { sourceUserId, userId }.OrderBy(x => x)) },
+                            { "senderUserId", sourceUserId },
+                            { "recipientUserId", userId },
+                            { "text", message ?? string.Empty },
+                            { "sentAt", MongoDB.Bson.BsonValue.Create(sentAt) },
+                            { "deliveredAt", MongoDB.Bson.BsonNull.Value },
+                            { "readAt", MongoDB.Bson.BsonNull.Value },
+                            { "clientMessageId", clientMessageId ?? string.Empty }
+                        };
+                        
+                        // Add customData if present
+                        if (customData != null && customData.Count > 0)
+                        {
+                            var customDataBson = new MongoDB.Bson.BsonDocument();
+                            foreach (var kvp in customData)
+                            {
+                                customDataBson.Add(kvp.Key, MongoDB.Bson.BsonValue.Create(kvp.Value));
+                            }
+                            doc.Add("customData", customDataBson);
+                        }
+                        
+                        if (!string.IsNullOrEmpty(replyToMessageId))
+                        {
+                            doc.Add("replyToMessageId", replyToMessageId);
+                        }
+                        
+                        await collection.InsertOneAsync(doc);
+                    }
+                }
+            }
+            catch { }
+        }
+
         public async Task<bool> EditMessage(string messageId, string newText)
         {
             try
@@ -385,7 +448,7 @@ namespace BusinessLayer.Hubs
         {
             // Upsert connection id (thread-safe)
             activeUsers.AddOrUpdate(userId, connectionId, (_, __) => connectionId);
-            await Clients.All.SendAsync("ReceiveActiveUsers", GetActiveUserIds());
+            await Clients.All.SendAsync("receiveactiveusers", GetActiveUserIds());
         }
 
         public string GetConnectionId()
@@ -401,7 +464,7 @@ namespace BusinessLayer.Hubs
 
         public override async Task OnConnectedAsync()
         {
-            await Clients.All.SendAsync("ReceiveActiveUsers", GetActiveUserIds());
+            await Clients.All.SendAsync("receiveactiveusers", GetActiveUserIds());
             await base.OnConnectedAsync();
         }
 
@@ -415,7 +478,7 @@ namespace BusinessLayer.Hubs
                     activeUsers.TryRemove(kv.Key, out _);
                 }
             }
-            await Clients.All.SendAsync("ReceiveActiveUsers", GetActiveUserIds());
+            await Clients.All.SendAsync("receiveactiveusers", GetActiveUserIds());
             await base.OnDisconnectedAsync(exception);
         }
 
@@ -434,17 +497,17 @@ namespace BusinessLayer.Hubs
 
         // Call signaling methods
         [HubMethodName("InitiateCall")]
-        public async Task InitiateCall(string calleeUserId, string callType)
+        public async Task InitiateCall(string calleeUserId, string callType, string callId)
         {
             var callerUserId = GetUserIdFromQuery();
             if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
             
-            var callId = Guid.NewGuid().ToString();
+            var finalCallId = callId;
             var payload = new { 
                 callerUserId, 
                 calleeUserId, 
                 callType, // "audio" or "video"
-                callId,
+                callId = finalCallId,
                 timestamp = DateTimeOffset.UtcNow
             };
 

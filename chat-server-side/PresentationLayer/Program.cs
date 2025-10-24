@@ -390,13 +390,14 @@ app.MapPost("/api/chat/upload-media", async (HttpRequest request) =>
     var contentType = (file.ContentType ?? string.Empty).ToLowerInvariant();
     var isImage = contentType.StartsWith("image/");
     var isVideo = contentType.StartsWith("video/");
-    if (!isImage && !isVideo)
+    var isAudio = contentType.StartsWith("audio/");
+    if (!isImage && !isVideo && !isAudio)
     {
-        return Results.BadRequest(new { message = "Only images or videos are allowed" });
+        return Results.BadRequest(new { message = "Only images, videos, or audio files are allowed" });
     }
     try
     {
-        // Prefer images via Cloudinary image API; videos via Cloudinary video API
+        // Prefer images via Cloudinary image API; videos and audio via Cloudinary video API
         var cloudName = app.Configuration["Cloudinary:CloudName"];
         var apiKey = app.Configuration["Cloudinary:ApiKey"];
         var apiSecret = app.Configuration["Cloudinary:ApiSecret"];
@@ -438,7 +439,7 @@ app.MapPost("/api/chat/upload-media", async (HttpRequest request) =>
             if (res.Error != null) return Results.Problem(res.Error.Message, statusCode: 500);
             return Results.Ok(new { url = res.SecureUrl.ToString(), mediaType = "image" });
         }
-        else
+        else if (isVideo)
         {
             var uploadParams = new CloudinaryDotNet.Actions.VideoUploadParams
             {
@@ -447,6 +448,16 @@ app.MapPost("/api/chat/upload-media", async (HttpRequest request) =>
             var res = await cloudinary.UploadAsync(uploadParams);
             if (res.Error != null) return Results.Problem(res.Error.Message, statusCode: 500);
             return Results.Ok(new { url = res.SecureUrl.ToString(), mediaType = "video" });
+        }
+        else // isAudio - Cloudinary handles audio files via VideoUploadParams
+        {
+            var uploadParams = new CloudinaryDotNet.Actions.VideoUploadParams
+            {
+                File = new CloudinaryDotNet.FileDescription(file.FileName, file.OpenReadStream())
+            };
+            var res = await cloudinary.UploadAsync(uploadParams);
+            if (res.Error != null) return Results.Problem(res.Error.Message, statusCode: 500);
+            return Results.Ok(new { url = res.SecureUrl.ToString(), mediaType = "audio" });
         }
     }
     catch (Exception ex)

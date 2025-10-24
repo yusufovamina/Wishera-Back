@@ -74,6 +74,17 @@ namespace gift_wishlist_service.Controllers
             return Ok(reserved);
         }
 
+        // Add a route without the /api/Gift prefix for frontend compatibility
+        [HttpGet("/reserved")]
+        public async Task<IActionResult> GetReservedGiftsDirect()
+        {
+            var userId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
+            var reserved = await _giftApiService.GetReservedGiftsAsync(userId);
+            return Ok(reserved);
+        }
+
         [HttpPost("{id}/cancel-reserve")]
         public async Task<IActionResult> CancelReservation(string id)
         {

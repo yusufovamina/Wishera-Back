@@ -71,6 +71,11 @@ namespace WisheraApp.DTO
         public decimal? Price { get; set; }
         public string? Url { get; set; }
         public string? GiftId { get; set; } // ID of the gift if it's from the Gift collection
+        
+        // Reservation information
+        public bool IsReserved { get; set; } = false;
+        public string? ReservedByUserId { get; set; }
+        public string? ReservedByUsername { get; set; }
     }
 
     public class WishlistResponseDTO

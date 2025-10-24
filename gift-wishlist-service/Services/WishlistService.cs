@@ -115,7 +115,10 @@ namespace gift_wishlist_service.Services
                 Category = g.Category,
                 Price = g.Price,
                 Url = null,
-                GiftId = g.Id
+                GiftId = g.Id,
+                IsReserved = !string.IsNullOrEmpty(g.ReservedByUserId),
+                ReservedByUserId = g.ReservedByUserId,
+                ReservedByUsername = g.ReservedByUsername
             }).ToList();
 
             // Aggregate likes and comments

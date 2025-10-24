@@ -127,6 +127,25 @@ namespace WisheraApp.Controllers
             }
         }
 
+        // Add a route without the /api/Gift prefix for frontend compatibility
+        [HttpGet("/reserved")]
+        public async Task<IActionResult> GetReservedGiftsDirect()
+        {
+            var userId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
+
+            try
+            {
+                var reservedGifts = await _giftWishlistServiceClient.GetReservedGiftsAsync(userId);
+                return Ok(reservedGifts);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPost("{id}/cancel-reserve")]
         public async Task<IActionResult> CancelReservation(string id)
         {

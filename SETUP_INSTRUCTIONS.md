@@ -54,13 +54,7 @@ cd gift-wishlist-service
 dotnet run --urls http://localhost:5221
 ```
 
-#### 4. Chat Service (Порт 5000)
-```bash
-cd chat-service-dotnet
-dotnet run --urls http://localhost:5000
-```
-
-#### 5. Main Wishera App (Порт 5155)
+#### 4. Main Wishera App (Порт 5155)
 ```bash
 cd WishlistApp
 dotnet run --urls http://localhost:5155
@@ -73,7 +67,6 @@ dotnet run --urls http://localhost:5155
 | Auth Service | http://localhost:5219 | Аутентификация и авторизация |
 | User Service | http://localhost:5220 | Управление пользователями |
 | Gift Wishlist Service | http://localhost:5221 | Управление подарками и списками желаний |
-| Chat Service | http://localhost:5000 | Чат функциональность |
 | Main Wishera App | http://localhost:5155 | Основное приложение (API Gateway) |
 
 ## 🔍 Проверка работоспособности

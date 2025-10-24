@@ -13,10 +13,12 @@ namespace user_service.Controllers
     public class EventsController : ControllerBase
     {
         private readonly IEventService _eventService;
+        private readonly MongoDbContext _dbContext;
 
-        public EventsController(IEventService eventService)
+        public EventsController(IEventService eventService, MongoDbContext dbContext)
         {
             _eventService = eventService;
+            _dbContext = dbContext;
         }
 
         private string? GetCurrentUserId() => User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -36,10 +38,10 @@ namespace user_service.Controllers
                         eventId = i.EventId, 
                         inviteeId = i.InviteeId, 
                         inviterId = i.InviterId,
-                        status = i.Status,
+                        status = i.Status.ToString(),
                         invitedAt = i.InvitedAt,
                         respondedAt = i.RespondedAt
-                    })
+                    }).ToList()
                 });
             }
             catch (Exception ex)

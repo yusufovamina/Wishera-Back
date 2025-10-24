@@ -19,12 +19,6 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'C:\Users\yusu
 
 Start-Sleep -Seconds 2
 
-# Chat Service
-Write-Host "Запускаю Chat Service на порту 5000..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'C:\Users\yusufova_a\WishlistWebApp\chat-service-dotnet'; dotnet run --urls http://localhost:5000"
-
-Start-Sleep -Seconds 2
-
 # Main Wishlist App
 Write-Host "Запускаю Main Wishlist App на порту 5155..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd 'C:\Users\yusufova_a\WishlistWebApp\WishlistApp'; dotnet run --urls http://localhost:5155"
@@ -36,7 +30,6 @@ Write-Host "🌐 URL адреса:" -ForegroundColor Cyan
 Write-Host "Auth Service: http://localhost:5219" -ForegroundColor White
 Write-Host "User Service: http://localhost:5220" -ForegroundColor White
 Write-Host "Gift Wishlist Service: http://localhost:5221" -ForegroundColor White
-Write-Host "Chat Service: http://localhost:5000" -ForegroundColor White
 Write-Host "Main App: http://localhost:5155" -ForegroundColor White
 Write-Host ""
 Write-Host "Нажмите любую клавишу для выхода..." -ForegroundColor Yellow

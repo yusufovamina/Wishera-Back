@@ -21,24 +21,6 @@ services:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
 
-  chat-service:
-    build:
-      context: ./chat-service-dotnet
-      dockerfile: Dockerfile
-    container_name: chat-service
-    depends_on:
-      - mongo
-      - rabbitmq
-      - redis
-    environment:
-      - ASPNETCORE_URLS=http://+:5000
-      - ChatMongo__ConnectionString=mongodb://mongo:27017
-      - ChatMongo__Database=wishlist_chat
-      - ChatMongo__Collection=messages
-      - ConnectionStrings__Redis=redis:6379
-    ports:
-      - "5000:5000"
-
   auth-service:
     build:
       context: .
@@ -102,7 +84,6 @@ services:
       - RabbitMq__UserName=guest
       - RabbitMq__Password=guest
       - RabbitMq__Port=5672
-      - ChatServiceUrl=http://chat-service:5000
     ports:
       - "5155:5155"
 

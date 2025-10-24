@@ -15,7 +15,9 @@ namespace user_service.Services
         Task<bool> CancelEventAsync(string eventId, string userId);
         Task<bool> DeleteEventAsync(string eventId, string userId);
         Task<EventInvitationDTO> RespondToInvitationAsync(string invitationId, string userId, RespondToInvitationDTO responseDto);
+        Task<EventInvitationDTO> ChangeInvitationResponseAsync(string invitationId, string userId, RespondToInvitationDTO responseDto);
         Task<EventInvitationListDTO> GetUserInvitationsAsync(string userId, int page = 1, int pageSize = 10);
+        Task<object> GetUserInvitationStatisticsAsync(string userId);
         Task<bool> IsUserInvitedToEventAsync(string eventId, string userId);
         Task<List<EventInvitationDTO>> GetEventInvitationsAsync(string eventId, string userId);
         Task<List<Event>> GetAllEventsAsync();

@@ -97,6 +97,30 @@ namespace user_service.Controllers
             }
         }
 
+        [HttpDelete("by-type")]
+        [AllowAnonymous] // Allow cross-service calls
+        public async Task<ActionResult<object>> DeleteNotificationByType(
+            [FromQuery] string userId, 
+            [FromQuery] int notificationType, 
+            [FromQuery] string relatedUserId,
+            [FromQuery] string? relatedEntityId = null)
+        {
+            try
+            {
+                var result = await _notificationService.DeleteNotificationByTypeAndRelatedUserAsync(
+                    userId, 
+                    (Models.NotificationType)notificationType, 
+                    relatedUserId, 
+                    relatedEntityId
+                );
+                return Ok(new { success = result, message = result ? "Notification(s) deleted" : "Notification not found" });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpGet("birthdays")]
         public async Task<ActionResult<List<BirthdayReminderDTO>>> GetUpcomingBirthdays([FromQuery] int daysAhead = 7)
         {
@@ -124,5 +148,86 @@ namespace user_service.Controllers
                 return StatusCode(500, new { message = "An error occurred while fetching birthdays", details = ex.Message });
             }
         }
+
+        [HttpPost("wishlist-like")]
+        [AllowAnonymous] // Allow cross-service calls
+        public async Task<ActionResult<NotificationDTO>> CreateWishlistLikeNotification([FromBody] WishlistLikeNotificationRequest request)
+        {
+            try
+            {
+                var notification = await _notificationService.CreateWishlistLikeNotificationAsync(
+                    request.UserId,
+                    request.LikerId,
+                    request.WishlistId,
+                    request.WishlistTitle
+                );
+                return Ok(notification);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("gift-reserved")]
+        [AllowAnonymous] // Allow cross-service calls
+        public async Task<ActionResult<NotificationDTO>> CreateGiftReservedNotification([FromBody] GiftReservedNotificationRequest request)
+        {
+            try
+            {
+                var notification = await _notificationService.CreateGiftReservedNotificationAsync(
+                    request.UserId,
+                    request.ReserverId,
+                    request.GiftId,
+                    request.GiftName,
+                    request.WishlistId
+                );
+                return Ok(notification);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("user-suggestions")]
+        [AllowAnonymous] // Allow internal calls
+        public async Task<ActionResult<object>> CreateUserSuggestions()
+        {
+            try
+            {
+                var notifications = await _notificationService.CreateUserSuggestionsAsync();
+                return Ok(new { count = notifications.Count, message = $"Created {notifications.Count} user suggestion notifications" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while creating user suggestions", details = ex.Message });
+            }
+        }
+    }
+
+    public class WishlistLikeNotificationRequest
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string LikerId { get; set; } = string.Empty;
+        public string WishlistId { get; set; } = string.Empty;
+        public string WishlistTitle { get; set; } = string.Empty;
+    }
+
+    public class GiftReservedNotificationRequest
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string ReserverId { get; set; } = string.Empty;
+        public string GiftId { get; set; } = string.Empty;
+        public string GiftName { get; set; } = string.Empty;
+        public string WishlistId { get; set; } = string.Empty;
     }
 }

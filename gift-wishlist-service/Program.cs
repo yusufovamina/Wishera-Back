@@ -62,6 +62,9 @@ builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 builder.Services.AddSingleton<IGiftApiService, GiftApiService>();
 builder.Services.AddSingleton<ICacheService, CacheService>();
 
+// HTTP Client for cross-service communication
+builder.Services.AddHttpClient<INotificationClient, NotificationClient>();
+
 // RabbitMQ RPC server
 builder.Services.AddHostedService<GiftWishlistRpcServer>();
 

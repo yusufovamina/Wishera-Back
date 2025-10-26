@@ -25,11 +25,13 @@ namespace gift_wishlist_service.Services
     {
         private readonly MongoDbContext _dbContext;
         private readonly ICloudinaryService _cloudinaryService;
+        private readonly INotificationClient _notificationClient;
 
-        public GiftApiService(MongoDbContext dbContext, ICloudinaryService cloudinaryService)
+        public GiftApiService(MongoDbContext dbContext, ICloudinaryService cloudinaryService, INotificationClient notificationClient)
         {
             _dbContext = dbContext;
             _cloudinaryService = cloudinaryService;
+            _notificationClient = notificationClient;
         }
 
         public async Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, IFormFile? imageFile)
@@ -81,9 +83,35 @@ namespace gift_wishlist_service.Services
             if (giftToReserve == null) throw new KeyNotFoundException("Gift not found");
             if (!string.IsNullOrEmpty(giftToReserve.ReservedByUserId))
                 throw new InvalidOperationException("Gift is already reserved!");
+            
             giftToReserve.ReservedByUserId = userId;
             giftToReserve.ReservedByUsername = username;
             await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == id, giftToReserve);
+
+            // Get the wishlist to find the owner and create notification
+            if (!string.IsNullOrEmpty(giftToReserve.WishlistId))
+            {
+                var wishlist = await _dbContext.Wishlists.Find(w => w.Id == giftToReserve.WishlistId).FirstOrDefaultAsync();
+                if (wishlist != null && wishlist.UserId != userId)
+                {
+                    try
+                    {
+                        await _notificationClient.CreateGiftReservedNotificationAsync(
+                            wishlist.UserId,
+                            userId,
+                            id,
+                            giftToReserve.Name,
+                            giftToReserve.WishlistId
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log error but don't fail the reservation
+                        Console.WriteLine($"Failed to create gift reserved notification: {ex.Message}");
+                    }
+                }
+            }
+
             return new { message = "Gift reserved successfully", reservedBy = username };
         }
 
@@ -93,9 +121,42 @@ namespace gift_wishlist_service.Services
             if (giftToCancel == null) throw new KeyNotFoundException("Gift not found");
             if (giftToCancel.ReservedByUserId != userId)
                 throw new UnauthorizedAccessException("You cannot cancel this reservation");
+            
+            // Get wishlist owner ID before clearing the reservation
+            string? wishlistOwnerId = null;
+            if (!string.IsNullOrEmpty(giftToCancel.WishlistId))
+            {
+                var wishlist = await _dbContext.Wishlists.Find(w => w.Id == giftToCancel.WishlistId).FirstOrDefaultAsync();
+                if (wishlist != null)
+                {
+                    wishlistOwnerId = wishlist.UserId;
+                }
+            }
+            
             giftToCancel.ReservedByUserId = null;
             giftToCancel.ReservedByUsername = null;
             await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == id, giftToCancel);
+            
+            // Delete the gift reserved notification
+            if (!string.IsNullOrEmpty(wishlistOwnerId) && wishlistOwnerId != userId)
+            {
+                try
+                {
+                    // NotificationType.GiftReserved = 12
+                    await _notificationClient.DeleteNotificationByTypeAndRelatedUserAsync(
+                        wishlistOwnerId,
+                        12, // GiftReserved
+                        userId,
+                        id
+                    );
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail the cancel operation
+                    Console.WriteLine($"Failed to delete gift reserved notification: {ex.Message}");
+                }
+            }
+            
             return new { message = "Reservation cancelled successfully" };
         }
 

@@ -33,4 +33,17 @@ namespace WisheraApp.DTO
     {
         public List<string> NotificationIds { get; set; } = new List<string>();
     }
+
+    public class BirthdayReminderDTO
+    {
+        public string Id { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string AvatarUrl { get; set; } = string.Empty;
+        public DateTime Birthday { get; set; }
+        public bool IsToday { get; set; }
+        public bool IsTomorrow { get; set; }
+        public int DaysUntilBirthday { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
 }

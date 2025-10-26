@@ -59,6 +59,8 @@ namespace user_service.Models
         GiftReceived = 8,
         WishlistShared = 9,
         CommentAdded = 10,
-        LikeReceived = 11
+        LikeReceived = 11,
+        GiftReserved = 12,
+        UserSuggestion = 13
     }
 }

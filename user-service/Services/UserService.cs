@@ -16,12 +16,14 @@ namespace user_service.Services
 		private readonly MongoDbContext _dbContext;
 		private readonly ICloudinaryService _cloudinaryService;
 		private readonly ICacheService _cache;
+		private readonly INotificationService _notificationService;
 
-		public UserService(MongoDbContext dbContext, ICloudinaryService cloudinaryService, ICacheService cache)
+		public UserService(MongoDbContext dbContext, ICloudinaryService cloudinaryService, ICacheService cache, INotificationService notificationService)
 		{
 			_dbContext = dbContext;
 			_cloudinaryService = cloudinaryService;
 			_cache = cache;
+			_notificationService = notificationService;
 		}
 
 		private bool IsValidObjectId(string id) 
@@ -168,6 +170,17 @@ namespace user_service.Services
 			var updateFollowing = Builders<User>.Update.AddToSet(u => u.FollowerIds, followerId);
 			await _dbContext.Users.UpdateOneAsync(u => u.Id == followingId, updateFollowing);
 
+			// Create friend request notification
+			try
+			{
+				await _notificationService.CreateFriendRequestNotificationAsync(followingId, followerId);
+			}
+			catch (Exception ex)
+			{
+				// Log error but don't fail the follow operation
+				Console.WriteLine($"Failed to create friend request notification: {ex.Message}");
+			}
+
 			return true;
 		}
 
@@ -195,6 +208,29 @@ namespace user_service.Services
 			// Update target user's FollowerIds
 			var updateFollowing = Builders<User>.Update.Pull(u => u.FollowerIds, followerId);
 			await _dbContext.Users.UpdateOneAsync(u => u.Id == followingId, updateFollowing);
+
+			// Delete friend-related notifications (both FriendRequest and FriendAccepted)
+			try
+			{
+				// Delete FriendRequest notification (when someone followed you)
+				await _notificationService.DeleteNotificationByTypeAndRelatedUserAsync(
+					followingId, 
+					Models.NotificationType.FriendRequest, 
+					followerId
+				);
+				
+				// Also delete FriendAccepted notification (if the followed user had followed back)
+				await _notificationService.DeleteNotificationByTypeAndRelatedUserAsync(
+					followerId, 
+					Models.NotificationType.FriendAccepted, 
+					followingId
+				);
+			}
+			catch (Exception ex)
+			{
+				// Log error but don't fail the unfollow operation
+				Console.WriteLine($"Failed to delete friend notifications: {ex.Message}");
+			}
 
 			return true;
 		}
@@ -370,41 +406,71 @@ namespace user_service.Services
 
 			Console.WriteLine($"Found {followingUsers.Count} following users with birthdays");
 
-			var today = DateTime.Today;
+			// Use UTC to avoid timezone issues
+			var today = DateTime.UtcNow.Date;
 			var targetDate = today.AddDays(daysAhead);
 			var birthdays = new List<BirthdayReminderDTO>();
+			
+			// DEBUG: Output current server time
+			Console.WriteLine($"=== BIRTHDAY CHECK DEBUG ===");
+			Console.WriteLine($"Server UTC Now: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}");
+			Console.WriteLine($"Server UTC Date (today): {today:yyyy-MM-dd}");
+			Console.WriteLine($"Target Date (today + {daysAhead}): {targetDate:yyyy-MM-dd}");
+			Console.WriteLine($"===========================");
 
 			foreach (var user in followingUsers)
 			{
-				Console.WriteLine($"Checking user {user.Username} with birthday {user.Birthday}");
+				Console.WriteLine($"\n--- Checking user: {user.Username} ---");
+				Console.WriteLine($"Stored birthday value: '{user.Birthday}'");
 				
 				if (DateTime.TryParse(user.Birthday, out var birthday))
 				{
-					// Calculate this year's birthday
-					var thisYearBirthday = new DateTime(today.Year, birthday.Month, birthday.Day);
+					// Extract just the month and day from the stored birthday
+					var birthdayMonth = birthday.Month;
+					var birthdayDay = birthday.Day;
 					
-					// If birthday already passed this year, use next year's
-					if (thisYearBirthday < today)
-						thisYearBirthday = thisYearBirthday.AddYears(1);
-
+					Console.WriteLine($"Parsed birthday: Year={birthday.Year}, Month={birthdayMonth}, Day={birthdayDay}");
+					
+					// Calculate this year's birthday
+					var thisYearBirthday = new DateTime(today.Year, birthdayMonth, birthdayDay);
+					
+					Console.WriteLine($"This year's birthday would be: {thisYearBirthday:yyyy-MM-dd}");
+					Console.WriteLine($"Server today is: {today:yyyy-MM-dd}");
+					
+					// Calculate days until birthday
 					var daysUntil = (thisYearBirthday - today).Days;
-					Console.WriteLine($"User {user.Username}: thisYearBirthday={thisYearBirthday:yyyy-MM-dd}, daysUntil={daysUntil}, targetDate={targetDate:yyyy-MM-dd}");
+					
+					Console.WriteLine($"Days until birthday calculation: ({thisYearBirthday:yyyy-MM-dd} - {today:yyyy-MM-dd}).Days = {daysUntil}");
+					
+					// If birthday already passed this year (negative days), skip it
+					if (daysUntil < 0)
+					{
+						Console.WriteLine($"❌ SKIPPING {user.Username} - birthday already passed this year (was {-daysUntil} days ago)");
+						continue;
+					}
+					
+					Console.WriteLine($"✓ User {user.Username}: daysUntil={daysUntil}, isToday={daysUntil == 0}, isTomorrow={daysUntil == 1}");
 
-					// Check if birthday is within the specified days
+					// Check if birthday is within the specified days (only future birthdays)
 					if (thisYearBirthday <= targetDate)
 					{
-						Console.WriteLine($"Adding birthday for {user.Username} - {daysUntil} days until birthday");
+						Console.WriteLine($"✓✓ ADDING birthday for {user.Username} - {daysUntil} days until birthday");
 						
 						birthdays.Add(new BirthdayReminderDTO
 						{
 							Id = user.Id,
+							UserId = user.Id,
 							Username = user.Username,
 							AvatarUrl = user.AvatarUrl ?? "",
 							Birthday = DateTime.TryParse(user.Birthday, out var parsedBirthday) ? parsedBirthday : DateTime.MinValue,
+							IsToday = daysUntil == 0,
+							IsTomorrow = daysUntil == 1,
 							DaysUntilBirthday = daysUntil,
 							Message = daysUntil == 0 
 								? $"It's {user.Username}'s birthday today! 🎉"
-								: $"{user.Username}'s birthday is tomorrow! 🎂"
+								: daysUntil == 1
+								? $"{user.Username}'s birthday is tomorrow! 🎂"
+								: $"{user.Username}'s birthday is in {daysUntil} days"
 						});
 					}
 				}

@@ -85,6 +85,55 @@ namespace auth_service.Controllers
             }
         }
 
+        [HttpGet("verify-email")]
+        public async Task<ActionResult> VerifyEmail([FromQuery] string token)
+        {
+            try
+            {
+                await _authService.VerifyEmailAsync(token);
+                return Ok(new { message = "Email verified successfully" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("resend-verification")]
+        public async Task<ActionResult> ResendVerification([FromBody] ForgotPasswordDTO dto)
+        {
+            try
+            {
+                await _authService.ResendVerificationEmailAsync(dto.Email);
+                return Ok(new { message = "Verification email sent. Please check your inbox." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [Authorize]
+        [HttpDelete("delete-account")]
+        public async Task<ActionResult> DeleteAccount()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { message = "User not authenticated" });
+                }
+
+                await _authService.DeleteAccountAsync(userId);
+                return Ok(new { message = "Account deleted successfully" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpGet("check-email")]
         public async Task<ActionResult<bool>> CheckEmailAvailability([FromQuery] string email)
         {
@@ -138,7 +187,8 @@ namespace auth_service.Controllers
                         ["scope"] = "openid email profile",
                         ["state"] = state,
                         ["code_challenge"] = codeChallenge,
-                        ["code_challenge_method"] = "S256"
+                        ["code_challenge_method"] = "S256",
+                        ["prompt"] = "select_account"
                     }
                 );
                 return Redirect(url);
@@ -166,7 +216,8 @@ namespace auth_service.Controllers
             }
 
             var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-            var frontendComplete = config["Frontend:BaseUrl"] ?? "http://localhost:3000/oauth-complete";
+            var frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
+            var frontendComplete = $"{frontendBase}/oauth-complete";
             var backendAuthority = $"{Request.Scheme}://{Request.Host}";
             var backendCallback = provider.Equals("Google", StringComparison.OrdinalIgnoreCase)
                 ? new Uri(new Uri(backendAuthority), "/signin-google").ToString()
@@ -251,7 +302,10 @@ namespace auth_service.Controllers
             }
             else
             {
-                var update = MongoDB.Driver.Builders<auth_service.Models.User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
+                // Update last active and mark email as verified (since Google verified it)
+                var update = MongoDB.Driver.Builders<auth_service.Models.User>.Update
+                    .Set(u => u.LastActive, DateTime.UtcNow)
+                    .Set(u => u.IsEmailVerified, true);
                 await dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
             }
 

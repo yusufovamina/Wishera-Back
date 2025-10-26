@@ -26,12 +26,14 @@ namespace gift_wishlist_service.Services
         private readonly MongoDbContext _dbContext;
         private readonly ICloudinaryService _cloudinaryService;
 		private readonly ICacheService _cache;
+        private readonly INotificationClient _notificationClient;
 
-		public WishlistService(MongoDbContext dbContext, ICloudinaryService cloudinaryService, ICacheService cache)
+		public WishlistService(MongoDbContext dbContext, ICloudinaryService cloudinaryService, ICacheService cache, INotificationClient notificationClient)
         {
             _dbContext = dbContext;
             _cloudinaryService = cloudinaryService;
 			_cache = cache;
+            _notificationClient = notificationClient;
         }
 
         public async Task<WishlistResponseDTO> CreateWishlistAsync(string userId, CreateWishlistDTO createDto)
@@ -388,6 +390,26 @@ namespace gift_wishlist_service.Services
 
 			await _cache.RemoveAsync($"wishlist:detail:{id}:{currentUserId}");
 			await _cache.RemoveAsync($"wishlist:feed:{currentUserId}:1:10");
+
+            // Create notification if user is liking someone else's wishlist
+            if (wishlist.UserId != currentUserId)
+            {
+                try
+                {
+                    await _notificationClient.CreateWishlistLikeNotificationAsync(
+                        wishlist.UserId,
+                        currentUserId,
+                        id,
+                        wishlist.Title
+                    );
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail the like operation
+                    Console.WriteLine($"Failed to create like notification: {ex.Message}");
+                }
+            }
+
 			return true;
         }
 
@@ -398,7 +420,35 @@ namespace gift_wishlist_service.Services
 
             var deleteResult = await _dbContext.Likes.DeleteOneAsync(l => l.WishlistId == id && l.UserId == currentUserId);
 
-            return deleteResult.IsAcknowledged && deleteResult.DeletedCount > 0;
+            if (deleteResult.IsAcknowledged && deleteResult.DeletedCount > 0)
+            {
+                // Delete the like notification
+                if (wishlist.UserId != currentUserId)
+                {
+                    try
+                    {
+                        // NotificationType.LikeReceived = 11
+                        await _notificationClient.DeleteNotificationByTypeAndRelatedUserAsync(
+                            wishlist.UserId,
+                            11, // LikeReceived
+                            currentUserId,
+                            id
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log error but don't fail the unlike operation
+                        Console.WriteLine($"Failed to delete like notification: {ex.Message}");
+                    }
+                }
+
+                await _cache.RemoveAsync($"wishlist:detail:{id}:{currentUserId}");
+                await _cache.RemoveAsync($"wishlist:feed:{currentUserId}:1:10");
+
+                return true;
+            }
+
+            return false;
         }
 
         public async Task<CommentDTO> AddCommentAsync(string wishlistId, string userId, CreateCommentDTO commentDto)

@@ -58,7 +58,8 @@ namespace auth_service.Controllers
                         ["scope"] = "openid email profile",
                         ["state"] = state,
                         ["code_challenge"] = codeChallenge,
-                        ["code_challenge_method"] = "S256"
+                        ["code_challenge_method"] = "S256",
+                        ["prompt"] = "select_account"
                     }
                 );
                 return Redirect(url);
@@ -85,7 +86,8 @@ namespace auth_service.Controllers
             }
 
             var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-            var frontendComplete = config["Frontend:BaseUrl"] ?? "http://localhost:3000/oauth-complete";
+            var frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
+            var frontendComplete = $"{frontendBase}/oauth-complete";
             var backendAuthority = $"{Request.Scheme}://{Request.Host}";
             var backendCallback = provider.Equals("Google", StringComparison.OrdinalIgnoreCase)
                 ? new Uri(new Uri(backendAuthority), "/signin-google").ToString()
@@ -170,7 +172,10 @@ namespace auth_service.Controllers
             }
             else
             {
-                var update = MongoDB.Driver.Builders<auth_service.Models.User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
+                // Update last active and mark email as verified (since Google verified it)
+                var update = MongoDB.Driver.Builders<auth_service.Models.User>.Update
+                    .Set(u => u.LastActive, DateTime.UtcNow)
+                    .Set(u => u.IsEmailVerified, true);
                 await dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
             }
 

@@ -34,6 +34,12 @@ namespace auth_service.Models
         [BsonElement("isEmailVerified")]
         public bool IsEmailVerified { get; set; } = false;
         
+        [BsonElement("emailVerificationToken")]
+        public string? EmailVerificationToken { get; set; }
+        
+        [BsonElement("emailVerificationTokenExpiry")]
+        public DateTime? EmailVerificationTokenExpiry { get; set; }
+        
         [BsonElement("resetPasswordToken")]
         public string? ResetPasswordToken { get; set; }
         

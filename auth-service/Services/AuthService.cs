@@ -17,6 +17,9 @@ namespace auth_service.Services
         Task<bool> IsUsernameUniqueAsync(string username);
         Task ForgotPasswordAsync(string email);
         Task ResetPasswordAsync(string token, string newPassword);
+        Task VerifyEmailAsync(string token);
+        Task ResendVerificationEmailAsync(string email);
+        Task DeleteAccountAsync(string userId);
     }
 
     public class AuthService : IAuthService
@@ -37,6 +40,9 @@ namespace auth_service.Services
             var emailNormalized = registerDto.Email.Trim().ToLowerInvariant();
             var usernameNormalized = registerDto.Username.Trim().ToLowerInvariant();
 
+            // Validate password security
+            ValidatePasswordStrength(registerDto.Password);
+
             // ensure unique by normalized fields
             var emailExists = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).AnyAsync();
             if (emailExists)
@@ -46,6 +52,10 @@ namespace auth_service.Services
             if (usernameExists)
                 throw new InvalidOperationException("Username is already taken");
 
+            // Generate email verification token
+            var verificationToken = Guid.NewGuid().ToString("N");
+            var verificationTokenExpiry = DateTime.UtcNow.AddDays(7);
+
             var user = new User
             {
                 Username = registerDto.Username,
@@ -54,23 +64,46 @@ namespace auth_service.Services
                 UsernameNormalized = usernameNormalized,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
                 CreatedAt = DateTime.UtcNow,
-                LastActive = DateTime.UtcNow
+                LastActive = DateTime.UtcNow,
+                IsEmailVerified = false,
+                EmailVerificationToken = verificationToken,
+                EmailVerificationTokenExpiry = verificationTokenExpiry
             };
 
             await _dbContext.Users.InsertOneAsync(user);
 
-            // Send welcome email
+            // Send verification email
             try
             {
-                await _emailService.SendWelcomeEmailAsync(user.Email, user.Username);
+                await _emailService.SendEmailVerificationAsync(user.Email, verificationToken, user.Username);
+                Console.WriteLine($"Email verification sent to {user.Email}");
             }
             catch (Exception ex)
             {
                 // Log the error but don't fail registration
-                Console.WriteLine($"Failed to send welcome email: {ex.Message}");
+                Console.WriteLine($"Failed to send verification email: {ex.Message}");
             }
 
             return await GenerateAuthResponseAsync(user);
+        }
+
+        private void ValidatePasswordStrength(string password)
+        {
+            if (password.Length < 8)
+                throw new InvalidOperationException("Password must be at least 8 characters long");
+            
+            if (!password.Any(char.IsUpper))
+                throw new InvalidOperationException("Password must contain at least one uppercase letter");
+            
+            if (!password.Any(char.IsLower))
+                throw new InvalidOperationException("Password must contain at least one lowercase letter");
+            
+            if (!password.Any(char.IsDigit))
+                throw new InvalidOperationException("Password must contain at least one number");
+            
+            // Check for special characters (any non-alphanumeric character)
+            if (!password.Any(ch => !char.IsLetterOrDigit(ch)))
+                throw new InvalidOperationException("Password must contain at least one special character");
         }
 
         public async Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto)
@@ -81,6 +114,10 @@ namespace auth_service.Services
 
             if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
                 throw new InvalidOperationException("Invalid email or password");
+
+            // Check if email is verified
+            if (!user.IsEmailVerified)
+                throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification link.");
 
             // Update last active timestamp
             var update = Builders<User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
@@ -141,6 +178,9 @@ namespace auth_service.Services
             if (user.ResetPasswordTokenExpiry < DateTime.UtcNow)
                 throw new InvalidOperationException("Reset token has expired");
 
+            // Validate new password strength
+            ValidatePasswordStrength(newPassword);
+
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
             var update = Builders<User>.Update
                 .Set(u => u.PasswordHash, passwordHash)
@@ -148,6 +188,70 @@ namespace auth_service.Services
                 .Set(u => u.ResetPasswordTokenExpiry, (DateTime?)null);
 
             await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+        }
+
+        public async Task VerifyEmailAsync(string token)
+        {
+            var user = await _dbContext.Users.Find(u => u.EmailVerificationToken == token).FirstOrDefaultAsync();
+            if (user == null)
+                throw new InvalidOperationException("Invalid verification token");
+
+            if (user.EmailVerificationTokenExpiry < DateTime.UtcNow)
+                throw new InvalidOperationException("Verification token has expired");
+
+            var update = Builders<User>.Update
+                .Set(u => u.IsEmailVerified, true)
+                .Set(u => u.EmailVerificationToken, (string?)null)
+                .Set(u => u.EmailVerificationTokenExpiry, (DateTime?)null);
+
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+        }
+
+        public async Task ResendVerificationEmailAsync(string email)
+        {
+            var emailNormalized = email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync();
+            
+            if (user == null)
+                throw new InvalidOperationException("No account found with this email address");
+
+            if (user.IsEmailVerified)
+                throw new InvalidOperationException("This email address is already verified");
+
+            // Generate new verification token
+            var verificationToken = Guid.NewGuid().ToString("N");
+            var verificationTokenExpiry = DateTime.UtcNow.AddDays(7);
+
+            var update = Builders<User>.Update
+                .Set(u => u.EmailVerificationToken, verificationToken)
+                .Set(u => u.EmailVerificationTokenExpiry, verificationTokenExpiry);
+
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+            // Send verification email
+            try
+            {
+                await _emailService.SendEmailVerificationAsync(user.Email, verificationToken, user.Username);
+                Console.WriteLine($"Verification email resent to {user.Email}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to resend verification email: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task DeleteAccountAsync(string userId)
+        {
+            var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+            
+            if (user == null)
+                throw new InvalidOperationException("User not found");
+
+            // Delete the user account
+            await _dbContext.Users.DeleteOneAsync(u => u.Id == userId);
+
+            Console.WriteLine($"Account deleted for user: {user.Username} ({user.Email})");
         }
 
         private async Task<AuthResponseDTO> GenerateAuthResponseAsync(User user)

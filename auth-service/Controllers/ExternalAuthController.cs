@@ -27,7 +27,7 @@ namespace auth_service.Controllers
         }
 
         [HttpGet("login/{provider}")]
-        public IActionResult Login(string provider)
+        public IActionResult Login(string provider, [FromQuery] string? prompt = null)
         {
             var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
             var apiOrigin = $"{Request.Scheme}://{Request.Host}";
@@ -48,19 +48,31 @@ namespace auth_service.Controllers
                 lock (GoogleStateToCodeVerifier) { GoogleStateToCodeVerifier[state] = codeVerifier; }
 
                 var backendCallback = new Uri(new Uri(apiOrigin), "/signin-google").ToString();
+                
+                var queryParams = new Dictionary<string, string?>
+                {
+                    ["client_id"] = clientId,
+                    ["redirect_uri"] = backendCallback,
+                    ["response_type"] = "code",
+                    ["scope"] = "openid email profile",
+                    ["state"] = state,
+                    ["code_challenge"] = codeChallenge,
+                    ["code_challenge_method"] = "S256"
+                };
+                
+                // Add prompt parameter if provided, otherwise default to "select_account"
+                if (!string.IsNullOrWhiteSpace(prompt))
+                {
+                    queryParams["prompt"] = Uri.EscapeDataString(prompt);
+                }
+                else
+                {
+                    queryParams["prompt"] = "select_account";
+                }
+                
                 var url = QueryHelpers.AddQueryString(
                     "https://accounts.google.com/o/oauth2/v2/auth",
-                    new Dictionary<string, string?>
-                    {
-                        ["client_id"] = clientId,
-                        ["redirect_uri"] = backendCallback,
-                        ["response_type"] = "code",
-                        ["scope"] = "openid email profile",
-                        ["state"] = state,
-                        ["code_challenge"] = codeChallenge,
-                        ["code_challenge_method"] = "S256",
-                        ["prompt"] = "select_account"
-                    }
+                    queryParams
                 );
                 return Redirect(url);
             }
@@ -95,6 +107,7 @@ namespace auth_service.Controllers
 
             string email = string.Empty;
             string name = "user";
+            string googleId = string.Empty;
 
             if (string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase))
             {
@@ -142,21 +155,63 @@ namespace auth_service.Controllers
 
                 var handler = new JwtSecurityTokenHandler();
                 var principal = handler.ValidateToken(idToken, tokenValidationParameters, out _);
-                email = principal.FindFirst("email")?.Value ?? string.Empty;
+                
+                // Extract claims from Google ID token
+                email = principal.FindFirst(ClaimTypes.Email)?.Value 
+                    ?? principal.FindFirst("email")?.Value 
+                    ?? string.Empty;
+                googleId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+                    ?? principal.FindFirst("sub")?.Value 
+                    ?? string.Empty;
+                name = principal.FindFirst(ClaimTypes.Name)?.Value 
+                    ?? principal.FindFirst("name")?.Value 
+                    ?? "user";
+                
+                Console.WriteLine($"[OAuth Debug] Email: '{email}', GoogleId: '{googleId}', Name: '{name}'");
+                
+                // Validate that we received both email and Google ID from Google
+                if (string.IsNullOrWhiteSpace(email))
+                {
+                    Console.WriteLine("[OAuth Error] Failed to retrieve email from Google account");
+                    return StatusCode(400, new { message = "Failed to retrieve email from Google account. Please ensure your Google account has an email address and try again." });
+                }
+                if (string.IsNullOrWhiteSpace(googleId))
+                {
+                    Console.WriteLine("[OAuth Error] Failed to retrieve Google ID from account");
+                    return StatusCode(400, new { message = "Failed to retrieve user ID from Google account" });
+                }
+                
                 var emailVerified = string.Equals(principal.FindFirst("email_verified")?.Value, "true", StringComparison.OrdinalIgnoreCase);
-                name = principal.FindFirst("name")?.Value ?? (email.Split('@').FirstOrDefault() ?? "user");
+                if (!emailVerified)
+                {
+                    Console.WriteLine($"[OAuth Warning] Email not verified for: {email}");
+                }
             }
             else if (string.Equals(provider, "Twitter", StringComparison.OrdinalIgnoreCase))
             {
                 return NotFound(new { message = "Twitter authentication is currently disabled" });
             }
 
-            // Upsert or get user
+            // Upsert or get user - prioritize Google ID over email for OAuth users
             var dbContext = HttpContext.RequestServices.GetRequiredService<MongoDbContext>();
             var normalizedEmail = email.Trim().ToLowerInvariant();
-            var user = await dbContext.Users.Find(u => u.EmailNormalized == normalizedEmail).FirstOrDefaultAsync();
+            
+            Console.WriteLine($"[OAuth Debug] Looking up user - GoogleId: '{googleId}', Email: '{normalizedEmail}'");
+            
+            // For Google OAuth, first try to find by Google ID, then by email
+            var user = await dbContext.Users.Find(u => u.GoogleId == googleId).FirstOrDefaultAsync();
             if (user == null)
             {
+                Console.WriteLine($"[OAuth Debug] No user found with GoogleId, trying email lookup");
+                user = await dbContext.Users.Find(u => u.EmailNormalized == normalizedEmail).FirstOrDefaultAsync();
+            }
+            else
+            {
+                Console.WriteLine($"[OAuth Debug] Found user by GoogleId: {user.Id}");
+            }
+            if (user == null)
+            {
+                Console.WriteLine($"[OAuth Debug] Creating new user with email '{email}' and GoogleId '{googleId}'");
                 user = new auth_service.Models.User
                 {
                     Username = name,
@@ -166,52 +221,48 @@ namespace auth_service.Controllers
                     PasswordHash = string.Empty,
                     CreatedAt = DateTime.UtcNow,
                     LastActive = DateTime.UtcNow,
-                    IsEmailVerified = true
+                    IsEmailVerified = true,
+                    GoogleId = googleId
                 };
                 await dbContext.Users.InsertOneAsync(user);
+                Console.WriteLine($"[OAuth Debug] Created new user with ID: {user.Id}");
             }
             else
             {
-                // Update last active and mark email as verified (since Google verified it)
+                Console.WriteLine($"[OAuth Debug] Updating existing user {user.Id} - setting GoogleId to '{googleId}'");
+                // Update last active, mark email as verified, and ensure Google ID is set
                 var update = MongoDB.Driver.Builders<auth_service.Models.User>.Update
                     .Set(u => u.LastActive, DateTime.UtcNow)
-                    .Set(u => u.IsEmailVerified, true);
+                    .Set(u => u.IsEmailVerified, true)
+                    .Set(u => u.GoogleId, googleId);
                 await dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
             }
 
-            // Issue our JWT: generate manually for social sign-ins
-            AuthResponseDTO authResponse;
-            if (string.IsNullOrEmpty(user.PasswordHash))
+            // Issue our JWT: always generate manually for OAuth/social sign-ins
+            var configJwtKey = config["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured");
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.ASCII.GetBytes(configJwtKey);
+            var descriptor = new SecurityTokenDescriptor
             {
-                var configJwtKey = config["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured");
-                var tokenHandler = new JwtSecurityTokenHandler();
-                var key = Encoding.ASCII.GetBytes(configJwtKey);
-                var descriptor = new SecurityTokenDescriptor
+                Subject = new ClaimsIdentity(new[]
                 {
-                    Subject = new ClaimsIdentity(new[]
-                    {
-                        new Claim(ClaimTypes.NameIdentifier, user.Id),
-                        new Claim(ClaimTypes.Name, user.Username),
-                        new Claim(ClaimTypes.Email, user.Email)
-                    }),
-                    Expires = DateTime.UtcNow.AddDays(7),
-                    Issuer = config["Jwt:Issuer"],
-                    SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-                };
-                var token = tokenHandler.CreateToken(descriptor);
-                authResponse = new AuthResponseDTO
-                {
-                    UserId = user.Id,
-                    Username = user.Username,
-                    Email = user.Email,
-                    Token = tokenHandler.WriteToken(token),
-                    ExpiresAt = descriptor.Expires ?? DateTime.UtcNow.AddDays(7)
-                };
-            }
-            else
+                    new Claim(ClaimTypes.NameIdentifier, user.Id),
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Email, user.Email)
+                }),
+                Expires = DateTime.UtcNow.AddDays(7),
+                Issuer = config["Jwt:Issuer"],
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            };
+            var token = tokenHandler.CreateToken(descriptor);
+            var authResponse = new AuthResponseDTO
             {
-                authResponse = await _authService.LoginAsync(new LoginDTO { Email = user.Email, Password = user.PasswordHash });
-            }
+                UserId = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                Token = tokenHandler.WriteToken(token),
+                ExpiresAt = descriptor.Expires ?? DateTime.UtcNow.AddDays(7)
+            };
 
             var redirectUrl = QueryHelpers.AddQueryString(frontendComplete, new Dictionary<string, string?>
             {

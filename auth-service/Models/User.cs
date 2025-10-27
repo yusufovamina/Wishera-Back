@@ -76,5 +76,9 @@ namespace auth_service.Models
 
         [BsonElement("birthday")]
         public DateTime? Birthday { get; set; }
+
+        // OAuth provider IDs for external authentication
+        [BsonElement("googleId")]
+        public string? GoogleId { get; set; }
     }
 }

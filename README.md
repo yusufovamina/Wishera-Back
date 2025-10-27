@@ -1,19 +1,19 @@
-# 🎁 Wishera – Complete Gift & Social Platform
+# Wishera – Complete Gift & Social Platform
 
 A comprehensive, microservices-based gift wishlist and social platform built with **Next.js** (frontend) and **.NET Core** (backend). Features real-time chat, notifications, event management, gift reservations, and a modern responsive UI.
 
 ---
 
-## 🌟 Features
+## Features
 
-### 🔐 Authentication & Security
+### Authentication & Security
 - **User Registration & Login** – Secure JWT-based authentication
 - **Email Verification** – Verify accounts via email confirmation
 - **External OAuth** – Google OAuth provider
 - **Password Recovery** – Reset password via email
 - **Account Management** – Update profile, change password, delete account
 
-### 🎁 Wishlist & Gift Management
+### Wishlist & Gift Management
 - **Create & Manage Wishlists** – Multiple wishlists per user
 - **Gift CRUD Operations** – Add, edit, delete, and organize gifts
 - **Gift Reservations** – Friends can secretly reserve gifts
@@ -21,7 +21,7 @@ A comprehensive, microservices-based gift wishlist and social platform built wit
 - **Gift Sharing** – Share wishlists via unique links
 - **Gift Search & Filter** – Advanced filtering and search capabilities
 
-### 💬 Real-Time Chat
+### Real-Time Chat
 - **Direct Messaging** – One-on-one conversations
 - **Group Chats** – Create and manage group conversations
 - **Message History** – Persistent chat history
@@ -29,26 +29,26 @@ A comprehensive, microservices-based gift wishlist and social platform built wit
 - **Custom Wallpapers** – Personalize chat backgrounds
 - **GIF & Emoji Support** – Rich media messaging
 
-### 🔔 Notification System
+### Notification System
 - **Real-Time Notifications** – Instant push notifications
 - **Notification Types** – Gift reservations, friend requests, events, messages
 - **Notification Management** – Mark as read, delete, auto-cleanup
 - **Notification Center** – Centralized notification hub
 
-### 📅 Events & Calendar
+### Events & Calendar
 - **Event Creation** – Create and manage events
 - **Event Invitations** – Invite friends to events
 - **Calendar Integration** – View all events in calendar format
 - **Event Reminders** – Automated notification reminders
 
-### 👥 Social Features
+### Social Features
 - **Friend System** – Add, remove, and manage friends
 - **User Profiles** – Customizable user profiles
 - **Activity Feed** – See friends' activities
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 This is a **microservices-based application** with the following services:
 
@@ -81,38 +81,38 @@ This is a **microservices-based application** with the following services:
 
 ### Services Overview:
 
-1. **Auth Service** (Port 5219)
+1. **Auth Service**
    - User authentication and authorization
    - JWT token management
    - Email verification
    - External OAuth integration
 
-2. **User Service** (Port 5400)
+2. **User Service**
    - User profile management
    - Friend system
    - Notifications
    - Account settings
 
-3. **Gift/Wishlist Service** (Port 5300)
+3. **Gift/Wishlist Service**
    - Wishlist CRUD operations
    - Gift management
    - Reservation system
    - Image uploads
 
-4. **Chat Service** (Port 5000)
+4. **Chat Service**
    - Real-time messaging with SignalR
    - Message persistence
    - Group chat management
    - Custom wallpapers
 
-5. **Wishera App** (Port 5155)
+5. **Wishera App**
    - Main application service
    - Event management
    - Calendar integration
 
 ---
 
-## 🚀 Tech Stack
+## Tech Stack
 
 ### **Frontend**
 - **Next.js 15** – React framework with App Router
@@ -124,7 +124,6 @@ This is a **microservices-based application** with the following services:
 - **SignalR Client** – Real-time communication
 - **Axios** – HTTP client
 - **React Hook Form + Zod** – Form validation
-- **QRCode.js** – QR code generation
 
 ### **Backend**
 - **ASP.NET Core 8** – Web API framework
@@ -146,9 +145,9 @@ This is a **microservices-based application** with the following services:
 
 ---
 
-## 🌍 API Documentation
+## API Documentation
 
-### 🔑 Auth Service (Port 5219)
+### Auth Service
 
 | Method | Endpoint | Description |
 |--------|---------|-------------|
@@ -158,9 +157,8 @@ This is a **microservices-based application** with the following services:
 | `POST` | `/api/Auth/forgot-password` | Request password reset |
 | `POST` | `/api/Auth/reset-password` | Reset password with token |
 | `POST` | `/api/ExternalAuth/google` | Google OAuth login |
-| `POST` | `/api/ExternalAuth/facebook` | Facebook OAuth login |
 
-### 👤 User Service (Port 5400)
+### User Service
 
 | Method | Endpoint | Description |
 |--------|---------|-------------|
@@ -174,7 +172,7 @@ This is a **microservices-based application** with the following services:
 | `PUT` | `/api/Notifications/{id}/read` | Mark as read |
 | `DELETE` | `/api/Notifications/{id}` | Delete notification |
 
-### 🎁 Gift/Wishlist Service (Port 5300)
+### Gift/Wishlist Service
 
 | Method | Endpoint | Description |
 |--------|---------|-------------|
@@ -190,7 +188,7 @@ This is a **microservices-based application** with the following services:
 | `DELETE` | `/api/Gift/{id}/unreserve` | Unreserve gift |
 | `POST` | `/api/Gift/{id}/upload-image` | Upload gift image |
 
-### 💬 Chat Service (Port 5000)
+### Chat Service
 
 | Method | Endpoint | Description |
 |--------|---------|-------------|
@@ -206,7 +204,7 @@ This is a **microservices-based application** with the following services:
 - `LeaveConversation` – Leave chat room
 - `TypingIndicator` – Broadcast typing status
 
-### 📅 Events Service (Port 5155)
+### Events Service
 
 | Method | Endpoint | Description |
 |--------|---------|-------------|
@@ -219,13 +217,13 @@ This is a **microservices-based application** with the following services:
 
 ---
 
-## 📜 License
+## License
 
 This project is open-source and available under the **MIT License**.
 
 ---
 
-## ✨ Credits
+## Credits
 
 💡 **Developed with ❤️ by:**
 - [@yusufovamina](https://github.com/yusufovamina)
@@ -233,7 +231,7 @@ This project is open-source and available under the **MIT License**.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -245,7 +243,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-## 📧 Support
+## Support
 
 For questions or support, please open an issue on GitHub.
 

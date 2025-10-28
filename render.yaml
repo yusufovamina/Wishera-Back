@@ -1,0 +1,178 @@
+# Render.com Blueprint - Deploy all services at once
+# Upload this file to your GitHub repo root
+# Then on Render: New -> Blueprint -> Connect your repo
+
+services:
+  # Auth Service
+  - type: web
+    name: wishera-auth-service
+    env: docker
+    dockerfilePath: ./auth-service/Dockerfile
+    dockerContext: ./
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_URLS
+        value: http://+:5219
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Jwt__Key
+        generateValue: true
+      - key: Jwt__Issuer
+        value: WisheraAuthService
+      - key: ConnectionStrings__MongoDB
+        sync: false  # You'll add this manually
+      - key: MongoDB__Database
+        value: WishlistApp
+      - key: RabbitMq__HostName
+        sync: false
+      - key: RabbitMq__UserName
+        sync: false
+      - key: RabbitMq__Password
+        sync: false
+      - key: RabbitMq__Port
+        value: 5672
+      - key: Cloudinary__CloudName
+        sync: false
+      - key: Cloudinary__ApiKey
+        sync: false
+      - key: Cloudinary__ApiSecret
+        sync: false
+
+  # Gift-Wishlist Service
+  - type: web
+    name: wishera-gift-service
+    env: docker
+    dockerfilePath: ./gift-wishlist-service/Dockerfile
+    dockerContext: ./
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_URLS
+        value: http://+:5300
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Jwt__Key
+        fromService:
+          type: web
+          name: wishera-auth-service
+          envVarKey: Jwt__Key
+      - key: Jwt__Issuer
+        value: WisheraAuthService
+      - key: ConnectionStrings__MongoDB
+        sync: false
+      - key: MongoDB__Database
+        value: WishlistApp
+      - key: ConnectionStrings__Redis
+        sync: false
+      - key: RabbitMq__HostName
+        sync: false
+      - key: RabbitMq__UserName
+        sync: false
+      - key: RabbitMq__Password
+        sync: false
+      - key: RabbitMq__Port
+        value: 5672
+      - key: Cloudinary__CloudName
+        sync: false
+      - key: Cloudinary__ApiKey
+        sync: false
+      - key: Cloudinary__ApiSecret
+        sync: false
+
+  # User Service
+  - type: web
+    name: wishera-user-service
+    env: docker
+    dockerfilePath: ./user-service/Dockerfile
+    dockerContext: ./
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_URLS
+        value: http://+:5400
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Jwt__Key
+        fromService:
+          type: web
+          name: wishera-auth-service
+          envVarKey: Jwt__Key
+      - key: Jwt__Issuer
+        value: WisheraAuthService
+      - key: ConnectionStrings__MongoDB
+        sync: false
+      - key: MongoDB__Database
+        value: WishlistApp
+      - key: ConnectionStrings__Redis
+        sync: false
+      - key: RabbitMq__HostName
+        sync: false
+      - key: RabbitMq__UserName
+        sync: false
+      - key: RabbitMq__Password
+        sync: false
+      - key: RabbitMq__Port
+        value: 5672
+      - key: Cloudinary__CloudName
+        sync: false
+      - key: Cloudinary__ApiKey
+        sync: false
+      - key: Cloudinary__ApiSecret
+        sync: false
+
+  # Main API Gateway
+  - type: web
+    name: wishera-app
+    env: docker
+    dockerfilePath: ./WishlistApp/Dockerfile
+    dockerContext: ./WishlistApp
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_URLS
+        value: http://+:5155
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Jwt__Key
+        fromService:
+          type: web
+          name: wishera-auth-service
+          envVarKey: Jwt__Key
+      - key: Jwt__Issuer
+        value: WisheraAuthService
+      - key: RabbitMq__HostName
+        sync: false
+      - key: RabbitMq__UserName
+        sync: false
+      - key: RabbitMq__Password
+        sync: false
+      - key: RabbitMq__Port
+        value: 5672
+
+  # Chat Service
+  - type: web
+    name: wishera-chat-service
+    env: docker
+    dockerfilePath: ./chat-server-side/Dockerfile
+    dockerContext: ./chat-server-side
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_URLS
+        value: http://+:5002
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ChatMongo__ConnectionString
+        sync: false
+      - key: ChatMongo__Database
+        value: wishlist_chat
+      - key: ChatMongo__Collection
+        value: messages
+      - key: Cloudinary__CloudName
+        sync: false
+      - key: Cloudinary__ApiKey
+        sync: false
+      - key: Cloudinary__ApiSecret
+        sync: false
+

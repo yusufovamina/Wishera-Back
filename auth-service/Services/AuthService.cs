@@ -15,7 +15,8 @@ namespace auth_service.Services
         Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto);
         Task<bool> IsEmailUniqueAsync(string email);
         Task<bool> IsUsernameUniqueAsync(string username);
-        Task ForgotPasswordAsync(string email);
+        Task ForgotPasswordAsync(string email, bool isMobile = false);
+        Task<string> VerifyResetCodeAsync(string email, string code);
         Task ResetPasswordAsync(string token, string newPassword);
         Task VerifyEmailAsync(string token);
         Task ResendVerificationEmailAsync(string email);
@@ -138,28 +139,29 @@ namespace auth_service.Services
             return !await _dbContext.Users.Find(u => u.UsernameNormalized == normalized).AnyAsync();
         }
 
-        public async Task ForgotPasswordAsync(string email)
+        public async Task ForgotPasswordAsync(string email, bool isMobile = false)
         {
             var user = await _dbContext.Users.Find(u => u.Email == email).FirstOrDefaultAsync();
             if (user == null)
-                throw new InvalidOperationException("If an account with this email exists, a password reset link will be sent");
+                throw new InvalidOperationException("If an account with this email exists, a password reset code will be sent");
 
-            // Generate a secure reset token
-            var resetToken = Guid.NewGuid().ToString("N");
-            var resetTokenExpiry = DateTime.UtcNow.AddHours(24);
+            // Generate a 6-digit reset code
+            var random = new Random();
+            var resetCode = random.Next(100000, 999999).ToString(); // 6-digit code
+            var resetTokenExpiry = DateTime.UtcNow.AddMinutes(15); // Codes expire in 15 minutes
 
             var update = Builders<User>.Update
-                .Set(u => u.ResetPasswordToken, resetToken)
+                .Set(u => u.ResetPasswordToken, resetCode) // Store code in token field
                 .Set(u => u.ResetPasswordTokenExpiry, resetTokenExpiry);
 
             await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
 
-            Console.WriteLine($"Generated reset token for user {user.Username} ({user.Email})");
+            Console.WriteLine($"Generated reset code for user {user.Username} ({user.Email}): {resetCode}");
 
             try
             {
-                // Send password reset email
-                await _emailService.SendPasswordResetEmailAsync(user.Email, resetToken, user.Username);
+                // Send password reset email with code
+                await _emailService.SendPasswordResetEmailAsync(user.Email, resetCode, user.Username, isMobile);
                 Console.WriteLine($"Password reset email sent successfully to {user.Email}");
             }
             catch (Exception ex)
@@ -167,6 +169,33 @@ namespace auth_service.Services
                 Console.WriteLine($"Failed to send password reset email: {ex.Message}");
                 throw;
             }
+        }
+
+        public async Task<string> VerifyResetCodeAsync(string email, string code)
+        {
+            var user = await _dbContext.Users.Find(u => u.Email == email).FirstOrDefaultAsync();
+            if (user == null)
+                throw new InvalidOperationException("Invalid email or code");
+
+            if (user.ResetPasswordToken != code)
+                throw new InvalidOperationException("Invalid reset code");
+
+            if (user.ResetPasswordTokenExpiry < DateTime.UtcNow)
+                throw new InvalidOperationException("Reset code has expired");
+
+            // Generate a secure token for password reset (after code verification)
+            var resetToken = Guid.NewGuid().ToString("N");
+            var resetTokenExpiry = DateTime.UtcNow.AddHours(1); // Token valid for 1 hour
+
+            var update = Builders<User>.Update
+                .Set(u => u.ResetPasswordToken, resetToken) // Replace code with token
+                .Set(u => u.ResetPasswordTokenExpiry, resetTokenExpiry);
+
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+            Console.WriteLine($"Reset code verified for user {user.Username}, generated token");
+
+            return resetToken;
         }
 
         public async Task ResetPasswordAsync(string token, string newPassword)

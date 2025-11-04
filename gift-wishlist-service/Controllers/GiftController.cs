@@ -26,8 +26,9 @@ namespace gift_wishlist_service.Controllers
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> CreateGift([FromForm] string name, [FromForm] decimal price, [FromForm] string category, [FromForm] string? wishlistId = null, IFormFile? imageFile = null)
         {
+            var userId = GetCurrentUserId();
             // This microservice's IWishlistService exposes gift operations via separate methods; create via RPC-like handler
-            var result = await _giftApiService.CreateGiftAsync(name, price, category, wishlistId, imageFile);
+            var result = await _giftApiService.CreateGiftAsync(name, price, category, wishlistId, userId, imageFile);
             return Ok(result);
         }
 
@@ -128,8 +129,20 @@ namespace gift_wishlist_service.Controllers
             var userId = GetCurrentUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new { message = "User not authenticated" });
-            var result = await _giftApiService.AssignGiftToWishlistAsync(id, assignDto.WishlistId);
-            return Ok(result);
+            
+            try
+            {
+                var result = await _giftApiService.AssignGiftToWishlistAsync(id, assignDto.WishlistId, userId);
+                return Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         [HttpPost("{id}/remove-from-wishlist")]
@@ -138,7 +151,7 @@ namespace gift_wishlist_service.Controllers
             var userId = GetCurrentUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new { message = "User not authenticated" });
-            var result = await _giftApiService.RemoveGiftFromWishlistAsync(id);
+            var result = await _giftApiService.RemoveGiftFromWishlistAsync(id, userId);
             return Ok(result);
         }
     }

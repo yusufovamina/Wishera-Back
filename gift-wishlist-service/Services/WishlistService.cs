@@ -176,8 +176,9 @@ namespace gift_wishlist_service.Services
 
             if (wishlist.UserId != currentUserId) throw new UnauthorizedAccessException("You are not authorized to delete this wishlist.");
 
-            // Remove associated gifts
-            await _dbContext.Gifts.DeleteManyAsync(g => g.WishlistId == id);
+            // Unassign associated gifts (set WishlistId to null instead of deleting them)
+            var giftUpdate = Builders<Gift>.Update.Set(g => g.WishlistId, (string?)null);
+            await _dbContext.Gifts.UpdateManyAsync(g => g.WishlistId == id, giftUpdate);
             // Remove associated likes
             await _dbContext.Likes.DeleteManyAsync(l => l.WishlistId == id);
             // Remove associated comments

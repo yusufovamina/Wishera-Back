@@ -108,8 +108,19 @@ namespace gift_wishlist_service.Controllers
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "User not authenticated" });
 
-            var wishlist = await _wishlistService.GetWishlistAsync(id, currentUserId);
-            return Ok(wishlist);
+            try
+            {
+                var wishlist = await _wishlistService.GetWishlistAsync(id, currentUserId);
+                return Ok(wishlist);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         [HttpPut("{id}")]

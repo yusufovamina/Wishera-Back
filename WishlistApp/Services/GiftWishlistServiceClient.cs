@@ -28,7 +28,7 @@ namespace WisheraApp.Services
         string[] GetCategories();
 
         // Gift operations
-        Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, IFormFile? imageFile);
+        Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, string? userId, IFormFile? imageFile);
         Task<object> UpdateGiftAsync(string id, GiftUpdateDto giftDto);
         Task<object> DeleteGiftAsync(string id);
         Task<object> ReserveGiftAsync(string id, string userId, string username);
@@ -171,9 +171,9 @@ namespace WisheraApp.Services
         }
 
         // Gift operations
-        public async Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, IFormFile? imageFile)
+        public async Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, string? userId, IFormFile? imageFile)
         {
-            var payload = JsonSerializer.Serialize(new { Name = name, Price = price, Category = category, WishlistId = wishlistId, ImageFile = imageFile });
+            var payload = JsonSerializer.Serialize(new { Name = name, Price = price, Category = category, WishlistId = wishlistId, UserId = userId, ImageFile = imageFile });
             var response = await SendRpcAsync("gift.create", payload);
             return JsonSerializer.Deserialize<object>(response)!;
         }
@@ -244,7 +244,7 @@ namespace WisheraApp.Services
 
         public async Task<object> AssignGiftToWishlistAsync(string id, string wishlistId, string userId)
         {
-            var payload = JsonSerializer.Serialize(new { GiftId = id, WishlistId = wishlistId });
+            var payload = JsonSerializer.Serialize(new { GiftId = id, WishlistId = wishlistId, UserId = userId });
             var response = await SendRpcAsync("gift.assignToWishlist", payload);
             return JsonSerializer.Deserialize<object>(response)!;
         }

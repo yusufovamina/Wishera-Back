@@ -7,7 +7,7 @@ namespace gift_wishlist_service.Services
 {
     public interface IGiftApiService
     {
-        Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, IFormFile? imageFile);
+        Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, string? userId, IFormFile? imageFile);
         Task<object> UpdateGiftAsync(string id, GiftUpdateDto giftDto);
         Task<object> DeleteGiftAsync(string id);
         Task<Gift> GetGiftByIdAsync(string id);
@@ -17,8 +17,8 @@ namespace gift_wishlist_service.Services
         Task<List<Gift>> GetUserWishlistAsync(string userId, string? category, string? sortBy);
         Task<List<Gift>> GetSharedWishlistAsync(string userId);
         Task<string> UploadGiftImageAsync(string id, IFormFile imageFile);
-        Task<object> AssignGiftToWishlistAsync(string id, string wishlistId);
-        Task<object> RemoveGiftFromWishlistAsync(string id);
+        Task<object> AssignGiftToWishlistAsync(string id, string wishlistId, string userId);
+        Task<object> RemoveGiftFromWishlistAsync(string id, string userId);
     }
 
     public class GiftApiService : IGiftApiService
@@ -34,7 +34,7 @@ namespace gift_wishlist_service.Services
             _notificationClient = notificationClient;
         }
 
-        public async Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, IFormFile? imageFile)
+        public async Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, string? userId, IFormFile? imageFile)
         {
             var gift = new Gift
             {
@@ -42,7 +42,8 @@ namespace gift_wishlist_service.Services
                 Name = name,
                 Price = price,
                 Category = category,
-                WishlistId = wishlistId
+                WishlistId = wishlistId,
+                UserId = userId
             };
             if (imageFile != null)
             {
@@ -175,9 +176,24 @@ namespace gift_wishlist_service.Services
             Console.WriteLine($"Found {userWishlistsList.Count} wishlists for user {userId}");
             Console.WriteLine($"Wishlist IDs: [{string.Join(", ", wishlistIds)}]");
             
-            // Only return gifts that belong to the user's actual wishlists
-            // Remove the filter for gifts with wishlistId == null to prevent showing orphaned gifts
-            var filter = Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds);
+            // Return gifts owned by the user (either assigned to their wishlists OR unassigned)
+            // Build filter: (UserId == userId AND WishlistId in user's wishlists) OR (UserId == userId AND WishlistId == null)
+            var filter = Builders<Gift>.Filter.Or(
+                Builders<Gift>.Filter.And(
+                    Builders<Gift>.Filter.Eq(g => g.UserId, userId),
+                    Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds)
+                ),
+                Builders<Gift>.Filter.And(
+                    Builders<Gift>.Filter.Eq(g => g.UserId, userId),
+                    Builders<Gift>.Filter.Eq(g => g.WishlistId, (string?)null)
+                )
+            );
+            
+            // If no wishlists exist, just filter by UserId (including null wishlistId)
+            if (wishlistIds.Count == 0)
+            {
+                filter = Builders<Gift>.Filter.Eq(g => g.UserId, userId);
+            }
             
             if (!string.IsNullOrEmpty(category))
             {
@@ -200,7 +216,7 @@ namespace gift_wishlist_service.Services
             Console.WriteLine($"Found {gifts.Count} gifts for user {userId}");
             foreach (var gift in gifts)
             {
-                Console.WriteLine($"  Gift: {gift.Name} (WishlistId: {gift.WishlistId})");
+                Console.WriteLine($"  Gift: {gift.Name} (WishlistId: {gift.WishlistId}, UserId: {gift.UserId})");
             }
             
             return gifts;
@@ -222,19 +238,64 @@ namespace gift_wishlist_service.Services
             return url;
         }
 
-        public async Task<object> AssignGiftToWishlistAsync(string id, string wishlistId)
+        public async Task<object> AssignGiftToWishlistAsync(string id, string wishlistId, string userId)
         {
             var giftToAssign = await _dbContext.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
             if (giftToAssign == null) throw new KeyNotFoundException("Gift not found");
+            
+            // Verify the user owns the gift (allow null UserId for backward compatibility with old gifts)
+            if (!string.IsNullOrEmpty(giftToAssign.UserId) && giftToAssign.UserId != userId)
+            {
+                throw new UnauthorizedAccessException("You are not authorized to assign this gift.");
+            }
+            // If UserId is null (old gift), set it now
+            if (string.IsNullOrEmpty(giftToAssign.UserId))
+            {
+                giftToAssign.UserId = userId;
+            }
+            
+            // Verify the user owns the wishlist they're assigning to
+            if (!string.IsNullOrEmpty(wishlistId))
+            {
+                var wishlist = await _dbContext.Wishlists.Find(w => w.Id == wishlistId).FirstOrDefaultAsync();
+                if (wishlist == null)
+                {
+                    throw new KeyNotFoundException("Wishlist not found.");
+                }
+                if (wishlist.UserId != userId)
+                {
+                    throw new UnauthorizedAccessException("You are not authorized to assign gifts to this wishlist.");
+                }
+            }
+            
             giftToAssign.WishlistId = wishlistId;
             await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == id, giftToAssign);
             return new { message = "Gift assigned to wishlist successfully" };
         }
 
-        public async Task<object> RemoveGiftFromWishlistAsync(string id)
+        public async Task<object> RemoveGiftFromWishlistAsync(string id, string userId)
         {
             var giftToRemove = await _dbContext.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
             if (giftToRemove == null) throw new KeyNotFoundException("Gift not found");
+            
+            // Verify the user owns the wishlist that contains this gift
+            if (!string.IsNullOrEmpty(giftToRemove.WishlistId))
+            {
+                var wishlist = await _dbContext.Wishlists.Find(w => w.Id == giftToRemove.WishlistId).FirstOrDefaultAsync();
+                if (wishlist == null || wishlist.UserId != userId)
+                {
+                    throw new UnauthorizedAccessException("You are not authorized to remove gifts from this wishlist.");
+                }
+            }
+            else
+            {
+                // If gift has no wishlist, verify user owns the gift
+                if (giftToRemove.UserId != userId)
+                {
+                    throw new UnauthorizedAccessException("You are not authorized to modify this gift.");
+                }
+            }
+            
             giftToRemove.WishlistId = null;
             await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == id, giftToRemove);
             return new { message = "Gift removed from wishlist successfully" };

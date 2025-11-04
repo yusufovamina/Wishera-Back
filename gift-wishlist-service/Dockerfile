@@ -11,8 +11,8 @@ COPY ./WishlistApp /src/WishlistApp
 COPY ./gift-wishlist-service /src/gift-wishlist-service
 # Restore dependencies
 RUN dotnet restore /src/gift-wishlist-service/gift-wishlist-service.csproj
-# Build and publish
-RUN dotnet publish /src/gift-wishlist-service/gift-wishlist-service.csproj -c Release -o /out
+# Build and publish, excluding appsettings files from referenced project
+RUN dotnet publish /src/gift-wishlist-service/gift-wishlist-service.csproj -c Release -o /out /p:ErrorOnDuplicatePublishOutputFiles=false
 
 FROM base AS final
 WORKDIR /app

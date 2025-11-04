@@ -6,10 +6,13 @@ ENV ASPNETCORE_URLS=http://+:5300
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-COPY ./gift-wishlist-service/gift-wishlist-service.csproj /src/gift-wishlist-service.csproj
-RUN dotnet restore /src/gift-wishlist-service.csproj
-COPY ./gift-wishlist-service /src
-RUN dotnet publish /src/gift-wishlist-service.csproj -c Release -o /out
+# Copy all source files (needed for project references to resolve during restore)
+COPY ./WishlistApp /src/WishlistApp
+COPY ./gift-wishlist-service /src/gift-wishlist-service
+# Restore dependencies
+RUN dotnet restore /src/gift-wishlist-service/gift-wishlist-service.csproj
+# Build and publish, excluding appsettings files from referenced project
+RUN dotnet publish /src/gift-wishlist-service/gift-wishlist-service.csproj -c Release -o /out /p:ErrorOnDuplicatePublishOutputFiles=false
 
 FROM base AS final
 WORKDIR /app

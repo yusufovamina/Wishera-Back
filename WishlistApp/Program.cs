@@ -6,6 +6,10 @@ using WisheraApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure port for Render.com
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 // Add services to the container
 builder.Services.AddControllers();
 
@@ -101,6 +105,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok("Healthy"));
 
 // No local DB index management in gateway
 

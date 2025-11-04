@@ -12,6 +12,10 @@ using Microsoft.Extensions.Caching.StackExchangeRedis;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure port for Render.com
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5003";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 builder.Services.AddControllers().ConfigureApplicationPartManager(apm =>
 {
     apm.ApplicationParts.Clear();
@@ -112,5 +116,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok("Healthy"));
 
 app.Run();

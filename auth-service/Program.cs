@@ -110,5 +110,6 @@ if (!app.Environment.IsDevelopment())
 app.UseCors(CorsPolicyName);
 
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok("Healthy"));
 
 app.Run();

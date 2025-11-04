@@ -18,13 +18,33 @@ namespace WisheraApp.Services
 
         public RabbitMqAuthClient(IConfiguration configuration)
         {
+            // Support environment variables for Render.com/CloudAMQP
+            var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
+                ?? configuration["RabbitMq:HostName"] 
+                ?? "localhost";
+            var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
+                ?? configuration["RabbitMq:UserName"] 
+                ?? "guest";
+            var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
+                ?? configuration["RabbitMq:Password"] 
+                ?? "guest";
+            var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
+                ?? configuration["RabbitMq:VirtualHost"] 
+                ?? "/";
+            
+            // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
+            if (virtualHost == "/" && userName != "guest")
+            {
+                virtualHost = userName;
+            }
+
             var factory = new ConnectionFactory
             {
-                HostName = configuration["RabbitMq:HostName"],
-                UserName = configuration["RabbitMq:UserName"],
-                Password = configuration["RabbitMq:Password"],
-                VirtualHost = configuration["RabbitMq:VirtualHost"],
-                Port = int.TryParse(configuration["RabbitMq:Port"], out var port) ? port : 5672
+                HostName = hostName,
+                UserName = userName,
+                Password = password,
+                VirtualHost = virtualHost,
+                Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? configuration["RabbitMq:Port"], out var port) ? port : 5672
             };
             _exchange = configuration["RabbitMq:Exchange"] ?? "auth.exchange";
             _connection = factory.CreateConnection();

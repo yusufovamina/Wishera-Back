@@ -25,13 +25,33 @@ namespace auth_service.Services
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
+            // Support environment variables for Render.com/CloudAMQP
+            var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
+                ?? _configuration["RabbitMq:HostName"] 
+                ?? "localhost";
+            var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
+                ?? _configuration["RabbitMq:UserName"] 
+                ?? "guest";
+            var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
+                ?? _configuration["RabbitMq:Password"] 
+                ?? "guest";
+            var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
+                ?? _configuration["RabbitMq:VirtualHost"] 
+                ?? "/";
+            
+            // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
+            if (virtualHost == "/" && userName != "guest")
+            {
+                virtualHost = userName;
+            }
+
             var factory = new ConnectionFactory
             {
-                HostName = _configuration["RabbitMq:HostName"],
-                UserName = _configuration["RabbitMq:UserName"],
-                Password = _configuration["RabbitMq:Password"],
-                VirtualHost = _configuration["RabbitMq:VirtualHost"],
-                Port = int.TryParse(_configuration["RabbitMq:Port"], out var port) ? port : 5672
+                HostName = hostName,
+                UserName = userName,
+                Password = password,
+                VirtualHost = virtualHost,
+                Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? _configuration["RabbitMq:Port"], out var port) ? port : 5672
             };
             _exchange = _configuration["RabbitMq:Exchange"] ?? _exchange;
             _queue = _configuration["RabbitMq:Queue"] ?? _queue;

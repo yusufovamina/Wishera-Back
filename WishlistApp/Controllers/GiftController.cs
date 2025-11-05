@@ -40,7 +40,7 @@ namespace WisheraApp.Controllers
 
             try
             {
-                var result = await _giftWishlistServiceClient.CreateGiftAsync(name, price, category, wishlistId, imageFile);
+                var result = await _giftWishlistServiceClient.CreateGiftAsync(name, price, category, wishlistId, userId, imageFile);
                 return Ok(result);
             }
             catch (Exception ex)

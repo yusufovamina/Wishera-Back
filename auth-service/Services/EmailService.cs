@@ -8,7 +8,7 @@ namespace auth_service.Services
     public interface IEmailService
     {
         Task SendWelcomeEmailAsync(string email, string username);
-        Task SendPasswordResetEmailAsync(string email, string token, string username);
+        Task SendPasswordResetEmailAsync(string email, string code, string username, bool isMobile = false);
         Task SendEmailVerificationAsync(string email, string token, string username);
     }
 
@@ -120,32 +120,31 @@ namespace auth_service.Services
             await SendEmailAsync(email, subject, htmlBody, textBody);
         }
 
-        public async Task SendPasswordResetEmailAsync(string email, string token, string username)
+        public async Task SendPasswordResetEmailAsync(string email, string code, string username, bool isMobile = false)
         {
-            var frontendUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:3000";
-            var resetLink = $"{frontendUrl}/reset-password?token={token}";
-
             var subject = "Reset Your Wishera Password";
             var htmlBody = $@"
                 <html>
                 <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
                     <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-                        <h1 style='color: #6366f1;'>Password Reset Request</h1>
+                        <h1 style='color: #6366f1;'>Password Reset Code</h1>
                         <p>Hi {username},</p>
-                        <p>We received a request to reset your password. Click the button below to reset it:</p>
+                        <p>We received a request to reset your password. Use the code below to verify your identity:</p>
                         <div style='text-align: center; margin: 30px 0;'>
-                            <a href='{resetLink}' style='background-color: #6366f1; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;'>Reset Password</a>
+                            <div style='background-color: #6366f1; color: white; padding: 20px; border-radius: 10px; display: inline-block;'>
+                                <div style='font-size: 32px; font-weight: bold; letter-spacing: 8px;'>{code}</div>
+                            </div>
                         </div>
-                        <p>Or copy and paste this link into your browser:</p>
-                        <p style='background-color: #f3f4f6; padding: 10px; border-radius: 5px; word-break: break-all;'>{resetLink}</p>
-                        <p>This link will expire in 24 hours.</p>
+                        <p style='font-size: 14px; color: #666;'>Enter this code in the app to reset your password.</p>
+                        <p style='font-size: 12px; color: #999;'>This code will expire in 15 minutes.</p>
                         <p>If you didn't request this, please ignore this email.</p>
                         <p>Best regards,<br>The Wishera Team</p>
                     </div>
                 </body>
                 </html>
             ";
-            var textBody = $"Hi {username},\n\nWe received a request to reset your password.\n\nClick this link to reset it: {resetLink}\n\nThis link will expire in 24 hours.\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nThe Wishera Team";
+            
+            var textBody = $"Hi {username},\n\nWe received a request to reset your password.\n\nYour reset code is: {code}\n\nEnter this code in the app to reset your password.\n\nThis code will expire in 15 minutes.\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nThe Wishera Team";
 
             await SendEmailAsync(email, subject, htmlBody, textBody);
         }

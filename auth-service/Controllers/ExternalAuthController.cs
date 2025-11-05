@@ -27,10 +27,47 @@ namespace auth_service.Controllers
         }
 
         [HttpGet("login/{provider}")]
-        public IActionResult Login(string provider, [FromQuery] string? prompt = null)
+        public IActionResult Login(string provider, [FromQuery] string? prompt = null, [FromQuery] string? clientType = null)
         {
             var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
             var apiOrigin = $"{Request.Scheme}://{Request.Host}";
+            
+            // Detect if this is a mobile client
+            // Only trust explicit clientType parameter or X-Client-Type header
+            // Don't use User-Agent as it can be misleading (web browsers can have "Mobile" in UA)
+            var clientTypeParam = clientType ?? "";
+            var clientTypeHeader = Request.Headers["X-Client-Type"].ToString();
+            var isMobile = string.Equals(clientTypeParam, "mobile", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(clientTypeHeader, "mobile", StringComparison.OrdinalIgnoreCase);
+            
+            Console.WriteLine($"[OAuth Login] Provider: {provider}, clientType param: '{clientTypeParam}', clientType header: '{clientTypeHeader}', isMobile: {isMobile}");
+            
+            // Store client type in state for callback
+            var clientTypeState = isMobile ? "mobile" : "web";
+            
+            // Get the origin from the request for web clients (to redirect back correctly)
+            string? frontendOrigin = null;
+            if (!isMobile)
+            {
+                var origin = Request.Headers["Origin"].ToString();
+                var referer = Request.Headers["Referer"].ToString();
+                
+                if (!string.IsNullOrEmpty(origin))
+                {
+                    frontendOrigin = origin;
+                }
+                else if (!string.IsNullOrEmpty(referer))
+                {
+                    try
+                    {
+                        var refererUri = new Uri(referer);
+                        frontendOrigin = $"{refererUri.Scheme}://{refererUri.Authority}";
+                    }
+                    catch { }
+                }
+                
+                Console.WriteLine($"[OAuth Login] Frontend origin detected: {frontendOrigin ?? "none"}");
+            }
 
             if (string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase))
             {
@@ -44,8 +81,29 @@ namespace auth_service.Controllers
                 var codeChallengeBytes = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));
                 var codeChallenge = Convert.ToBase64String(codeChallengeBytes).Replace("+", "-").Replace("/", "_").Replace("=", string.Empty);
 
-                var state = $"google_{Guid.NewGuid():N}";
-                lock (GoogleStateToCodeVerifier) { GoogleStateToCodeVerifier[state] = codeVerifier; }
+                // Store state with client type
+                // Store base state only (Google will preserve this), and origin separately
+                var stateGuid = Guid.NewGuid().ToString("N");
+                var state = isMobile 
+                    ? $"google_mobile_{stateGuid}"
+                    : $"google_web_{stateGuid}";
+                
+                Console.WriteLine($"[OAuth Login] Created state: {state} (clientTypeState: {clientTypeState})");
+                if (frontendOrigin != null)
+                {
+                    Console.WriteLine($"[OAuth Login] Storing frontend origin: {frontendOrigin}");
+                }
+                
+                // Store code verifier with base state, and frontend origin separately
+                lock (GoogleStateToCodeVerifier) 
+                { 
+                    GoogleStateToCodeVerifier[state] = codeVerifier;
+                    if (frontendOrigin != null)
+                    {
+                        // Store origin separately keyed by GUID
+                        GoogleStateToCodeVerifier[$"origin_{stateGuid}"] = frontendOrigin;
+                    }
+                }
 
                 var backendCallback = new Uri(new Uri(apiOrigin), "/signin-google").ToString();
                 
@@ -88,18 +146,104 @@ namespace auth_service.Controllers
         public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state, string provider)
         {
             string codeVerifier;
+            string? storedOrigin = null;
+            
+            // State from Google should be just the base state (e.g., google_web_xxx)
+            // But handle case where Google might have added something
+            var stateBase = state.Split('|')[0]; // Get base state in case Google modified it
+            
             lock (GoogleStateToCodeVerifier)
             {
-                if (!GoogleStateToCodeVerifier.TryGetValue(state, out codeVerifier))
+                if (!GoogleStateToCodeVerifier.TryGetValue(stateBase, out codeVerifier))
                 {
                     return BadRequest(new { message = "Invalid state" });
                 }
-                GoogleStateToCodeVerifier.Remove(state);
+                
+                GoogleStateToCodeVerifier.Remove(stateBase);
+                
+                // Extract state GUID to look up stored origin
+                // State format: google_web_xxx or google_mobile_xxx
+                var stateGuidParts = stateBase.Split('_');
+                if (stateGuidParts.Length >= 3)
+                {
+                    var stateGuid = stateGuidParts[2];
+                    // Try to retrieve stored origin (only for web clients)
+                    if (!stateBase.StartsWith("google_mobile_"))
+                    {
+                        if (GoogleStateToCodeVerifier.TryGetValue($"origin_{stateGuid}", out var origin) && origin != null)
+                        {
+                            storedOrigin = origin;
+                            GoogleStateToCodeVerifier.Remove($"origin_{stateGuid}");
+                        }
+                    }
+                }
             }
 
             var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-            var frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
-            var frontendComplete = $"{frontendBase}/oauth-complete";
+            
+            // Detect if this is a mobile client from the state parameter
+            var isMobile = stateBase.StartsWith("google_mobile_", StringComparison.OrdinalIgnoreCase);
+            
+            Console.WriteLine($"[OAuth Callback] State: {state}, stateBase: {stateBase}, isMobile: {isMobile}, storedOrigin: {storedOrigin ?? "none"}");
+            
+            // Use appropriate redirect URL based on client type
+            string frontendComplete;
+            if (isMobile)
+            {
+                // Mobile uses deep link
+                var mobileBaseUrl = config["Frontend:MobileBaseUrl"] ?? "wishera://";
+                frontendComplete = $"{mobileBaseUrl}oauth-complete";
+                Console.WriteLine($"[OAuth Callback] Using mobile deep link: {frontendComplete}");
+            }
+            else
+            {
+                // Web uses HTTP URL
+                // First try stored origin, then headers, then fallback
+                string frontendBase;
+                
+                if (!string.IsNullOrEmpty(storedOrigin))
+                {
+                    // Use the origin we stored during login
+                    frontendBase = storedOrigin;
+                    Console.WriteLine($"[OAuth Callback] Using stored origin: {frontendBase}");
+                }
+                else
+                {
+                    // Try to get the origin from Referer or Origin header (may not be available after Google redirect)
+                    var referer = Request.Headers["Referer"].ToString();
+                    var origin = Request.Headers["Origin"].ToString();
+                    
+                    Console.WriteLine($"[OAuth Callback] Web client detected. Origin: {origin}, Referer: {referer}");
+                    
+                    if (!string.IsNullOrEmpty(origin))
+                    {
+                        // Use the origin from the request (e.g., http://localhost:19006)
+                        frontendBase = origin;
+                    }
+                    else if (!string.IsNullOrEmpty(referer))
+                    {
+                        // Parse origin from referer URL
+                        try
+                        {
+                            var refererUri = new Uri(referer);
+                            frontendBase = $"{refererUri.Scheme}://{refererUri.Authority}";
+                        }
+                        catch
+                        {
+                            frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to configured URL
+                        frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
+                    }
+                }
+                
+                frontendComplete = $"{frontendBase}/oauth-complete";
+                Console.WriteLine($"[OAuth Callback] Using web URL: {frontendComplete}");
+            }
+            
             var backendAuthority = $"{Request.Scheme}://{Request.Host}";
             var backendCallback = provider.Equals("Google", StringComparison.OrdinalIgnoreCase)
                 ? new Uri(new Uri(backendAuthority), "/signin-google").ToString()

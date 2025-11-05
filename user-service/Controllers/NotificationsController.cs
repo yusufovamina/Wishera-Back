@@ -42,13 +42,22 @@ namespace user_service.Controllers
         {
             try
             {
-                var userId = GetCurrentUserId() ?? string.Empty;
+                var userId = GetCurrentUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { message = "User not authenticated. Please log in." });
+                }
+                
                 var count = await _notificationService.GetUnreadNotificationCountAsync(userId);
                 return Ok(new { unreadCount = count });
             }
             catch (ArgumentException ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while fetching unread count", details = ex.Message });
             }
         }
 
@@ -126,10 +135,10 @@ namespace user_service.Controllers
         {
             try
             {
-                var userId = GetCurrentUserId() ?? string.Empty;
+                var userId = GetCurrentUserId();
                 if (string.IsNullOrEmpty(userId))
                 {
-                    return Unauthorized(new { message = "User not authenticated" });
+                    return Unauthorized(new { message = "User not authenticated. Please log in." });
                 }
                 
                 var birthdays = await _userService.GetUpcomingBirthdaysAsync(userId, daysAhead);
@@ -145,6 +154,8 @@ namespace user_service.Controllers
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"Error fetching birthdays: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 return StatusCode(500, new { message = "An error occurred while fetching birthdays", details = ex.Message });
             }
         }

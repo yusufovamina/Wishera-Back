@@ -82,9 +82,13 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", builder =>
     {
-        builder.AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader();
+        builder.WithOrigins(
+            "http://localhost:3000",      // Web frontend (local dev)
+            "https://wishera.vercel.app"  // Production frontend
+        )
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials();
     });
 });
 

@@ -48,12 +48,23 @@ namespace auth_service.Controllers
         {
             try
             {
+                if (loginDto == null || string.IsNullOrWhiteSpace(loginDto.Email) || string.IsNullOrWhiteSpace(loginDto.Password))
+                {
+                    return BadRequest(new { message = "Email and password are required" });
+                }
+
                 var response = await _authService.LoginAsync(loginDto);
                 return Ok(response);
             }
             catch (InvalidOperationException ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Login error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(500, new { message = "An error occurred during login. Please try again later." });
             }
         }
 

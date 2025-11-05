@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using WisheraApp.DTO;
 using WisheraApp.Models;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
+using user_service.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +26,12 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {
 	o.DocumentFilter<user_service.SwaggerFilters.IncludeOnlyUsersFilter>();
+});
+
+// Configure request timeout (30 seconds)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
 });
 
 // CORS for frontend
@@ -78,6 +85,49 @@ builder.Services
 			ValidateLifetime = true,
 			ClockSkew = TimeSpan.Zero
 		};
+		
+		// Improve error handling for authentication failures
+		options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+		{
+			OnAuthenticationFailed = context =>
+			{
+				Console.WriteLine($"JWT Authentication failed: {context.Exception.Message}");
+				
+				// Add CORS headers to error response (validate origin)
+				var origin = context.Request.Headers["Origin"].ToString();
+				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+				if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+				{
+					context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
+					context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+				}
+				
+				context.NoResult();
+				context.Response.StatusCode = 401;
+				context.Response.ContentType = "application/json";
+				var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication failed. Please log in again." });
+				return context.Response.WriteAsync(result);
+			},
+			OnChallenge = context =>
+			{
+				Console.WriteLine($"JWT Challenge: {context.Error}, {context.ErrorDescription}");
+				
+				// Add CORS headers to error response (validate origin)
+				var origin = context.Request.Headers["Origin"].ToString();
+				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+				if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+				{
+					context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
+					context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+				}
+				
+				context.HandleResponse();
+				context.Response.StatusCode = 401;
+				context.Response.ContentType = "application/json";
+				var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication required. Please log in." });
+				return context.Response.WriteAsync(result);
+			}
+		};
 	});
 
 // Register core user logic (local services)
@@ -86,6 +136,9 @@ builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<ICacheService, CacheService>();
+
+// Register global exception handling middleware
+builder.Services.AddTransient<GlobalExceptionMiddleware>();
 
 // RabbitMQ RPC server
 builder.Services.AddHostedService<UserRpcServer>();
@@ -108,8 +161,13 @@ if (app.Environment.IsDevelopment())
 	app.UseSwaggerUI();
 }
 
+// Apply CORS early to ensure headers are sent even on errors
 app.UseRouting();
 app.UseCors("Frontend");
+
+// Add global exception handling middleware (must be after CORS but before controllers)
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -15,6 +15,12 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Configure request timeout (30 seconds)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
+});
+
 // CORS
 const string CorsPolicyName = "DevCors";
 builder.Services.AddCors(options =>
@@ -108,6 +114,10 @@ if (!app.Environment.IsDevelopment())
 
 // Apply CORS before auth and endpoints
 app.UseCors(CorsPolicyName);
+
+// Add authentication and authorization middleware (required for protected endpoints)
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok("Healthy"));

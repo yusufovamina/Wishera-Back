@@ -25,6 +25,11 @@ namespace WisheraApp.Services
     {
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        };
 
         public EventServiceClient(HttpClient httpClient, IConfiguration configuration)
         {
@@ -39,17 +44,81 @@ namespace WisheraApp.Services
 
         public async Task<EventDTO> CreateEventAsync(string userId, CreateEventDTO createEventDto, string token)
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/Events")
+            try
             {
-                Content = new StringContent(JsonSerializer.Serialize(createEventDto), Encoding.UTF8, "application/json")
-            };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            
-            var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-            
-            var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<EventDTO>(content)!;
+                Console.WriteLine($"Creating event for user {userId}: {JsonSerializer.Serialize(createEventDto, JsonOptions)}");
+                
+                var request = new HttpRequestMessage(HttpMethod.Post, "/api/Events")
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(createEventDto, JsonOptions), Encoding.UTF8, "application/json")
+                };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                
+                var response = await _httpClient.SendAsync(request);
+                Console.WriteLine($"Event creation response status: {response.StatusCode}");
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    string errorMessage = "Failed to create event";
+                    
+                    try
+                    {
+                        var errorJson = JsonSerializer.Deserialize<JsonElement>(errorContent);
+                        if (errorJson.TryGetProperty("message", out var message))
+                        {
+                            errorMessage = message.GetString() ?? errorMessage;
+                        }
+                        else if (errorJson.TryGetProperty("error", out var error))
+                        {
+                            errorMessage = error.GetString() ?? errorMessage;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error parsing error response: {ex.Message}");
+                        errorMessage = errorContent.Length > 0 ? errorContent : errorMessage;
+                    }
+                    
+                    Console.WriteLine($"Event creation failed with status {response.StatusCode}: {errorMessage}");
+                    
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        throw new UnauthorizedAccessException(errorMessage);
+                    }
+                    else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        throw new KeyNotFoundException(errorMessage);
+                    }
+                    else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                    {
+                        throw new ArgumentException(errorMessage);
+                    }
+                    else if (response.StatusCode == System.Net.HttpStatusCode.GatewayTimeout || 
+                             response.StatusCode == System.Net.HttpStatusCode.RequestTimeout)
+                    {
+                        throw new TimeoutException(errorMessage);
+                    }
+                    else
+                    {
+                        throw new HttpRequestException($"HTTP {response.StatusCode}: {errorMessage}");
+                    }
+                }
+                
+                var content = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Event created successfully: {content.Substring(0, Math.Min(200, content.Length))}...");
+                return JsonSerializer.Deserialize<EventDTO>(content, JsonOptions)!;
+            }
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+            {
+                Console.WriteLine($"Event creation request timed out");
+                throw new TimeoutException("Request to event service timed out. Please try again.");
+            }
+            catch (TaskCanceledException)
+            {
+                Console.WriteLine($"Event creation request was cancelled");
+                throw new TimeoutException("Request to event service was cancelled. Please try again.");
+            }
         }
 
         public async Task<EventDTO?> GetEventByIdAsync(string eventId, string currentUserId, string token)
@@ -63,7 +132,7 @@ namespace WisheraApp.Services
             
             response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<EventDTO>(content);
+            return JsonSerializer.Deserialize<EventDTO>(content, JsonOptions);
         }
 
         public async Task<EventListDTO> GetUserEventsAsync(string userId, string currentUserId, int page, int pageSize, string token)
@@ -75,7 +144,7 @@ namespace WisheraApp.Services
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<EventListDTO>(content)!;
+            return JsonSerializer.Deserialize<EventListDTO>(content, JsonOptions)!;
         }
 
         public async Task<EventListDTO> GetInvitedEventsAsync(string userId, int page, int pageSize, string token)
@@ -87,7 +156,7 @@ namespace WisheraApp.Services
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<EventListDTO>(content)!;
+            return JsonSerializer.Deserialize<EventListDTO>(content, JsonOptions)!;
         }
 
         public async Task<EventListDTO> GetMyInvitationsAsync(string userId, int page, int pageSize, string token)
@@ -99,7 +168,7 @@ namespace WisheraApp.Services
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<EventListDTO>(content)!;
+            return JsonSerializer.Deserialize<EventListDTO>(content, JsonOptions)!;
         }
 
         public async Task<EventDTO> UpdateEventAsync(string eventId, string userId, UpdateEventDTO updateDto, string token)
@@ -114,7 +183,7 @@ namespace WisheraApp.Services
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<EventDTO>(content)!;
+            return JsonSerializer.Deserialize<EventDTO>(content, JsonOptions)!;
         }
 
         public async Task<bool> CancelEventAsync(string eventId, string userId, string token)
@@ -152,7 +221,7 @@ namespace WisheraApp.Services
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<List<EventInvitationDTO>>(content)!;
+            return JsonSerializer.Deserialize<List<EventInvitationDTO>>(content, JsonOptions)!;
         }
 
         public async Task<EventInvitationDTO> RespondToInvitationAsync(string invitationId, string userId, RespondToInvitationDTO responseDto, string token)
@@ -167,7 +236,7 @@ namespace WisheraApp.Services
             response.EnsureSuccessStatusCode();
             
             var content = await response.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<EventInvitationDTO>(content)!;
+            return JsonSerializer.Deserialize<EventInvitationDTO>(content, JsonOptions)!;
         }
     }
 }

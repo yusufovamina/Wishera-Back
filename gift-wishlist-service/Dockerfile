@@ -8,6 +8,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 # Copy all source files (needed for project references to resolve during restore)
 COPY ./WishlistApp /src/WishlistApp
+COPY ./user-service /src/user-service
 COPY ./gift-wishlist-service /src/gift-wishlist-service
 # Restore dependencies
 RUN dotnet restore /src/gift-wishlist-service/gift-wishlist-service.csproj

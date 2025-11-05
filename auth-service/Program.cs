@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using auth_service.Middleware;
+using auth_service.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +13,11 @@ var builder = WebApplication.CreateBuilder(args);
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5219";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    // Add CORS result filter to ensure headers are always present
+    options.Filters.Add<CorsResultFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -160,6 +165,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 // Apply CORS before auth and endpoints
+app.UseRouting();
 app.UseCors(CorsPolicyName);
 
 // Add global exception handling middleware (must be after CORS but before controllers)

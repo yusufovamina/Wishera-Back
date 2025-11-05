@@ -4,6 +4,7 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using WisheraApp.Services;
 using WisheraApp.Middleware;
+using WisheraApp.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +13,11 @@ var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    // Add CORS result filter to ensure headers are always present
+    options.Filters.Add<CorsResultFilter>();
+});
 
 // API gateway does not use local Mongo or Cloudinary; those are in microservices
 
@@ -155,6 +160,7 @@ if (app.Environment.IsDevelopment())
 
 // In dev we run HTTP locally; disable HTTPS redirection to avoid port mismatch
 // app.UseHttpsRedirection();
+app.UseRouting();
 app.UseCors("AllowAll");
 
 // Add global exception handling middleware (must be after CORS but before controllers)
@@ -162,6 +168,27 @@ app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Ensure CORS headers are applied to all error responses (backup for when CORS middleware misses them)
+app.Use(async (context, next) =>
+{
+    await next();
+    
+    // If this is an error response and CORS headers aren't present, add them
+    // Only modify if response hasn't started
+    if (!context.Response.HasStarted && 
+        context.Response.StatusCode >= 400 && 
+        !context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+    {
+        var origin = context.Request.Headers["Origin"].ToString();
+        var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+        if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+        {
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        }
+    }
+});
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok("Healthy"));

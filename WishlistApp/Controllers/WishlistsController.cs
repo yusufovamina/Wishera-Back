@@ -159,13 +159,28 @@ namespace WisheraApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var currentUserId = GetCurrentUserId();
-            if (string.IsNullOrEmpty(currentUserId))
+            try
             {
-                return Unauthorized(new { message = "User not authenticated" });
+                var currentUserId = GetCurrentUserId();
+                if (string.IsNullOrEmpty(currentUserId))
+                {
+                    return Unauthorized(new { message = "User not authenticated. Please log in." });
+                }
+                
+                var feed = await _giftWishlistServiceClient.GetFeedAsync(currentUserId, page, pageSize);
+                return Ok(feed);
             }
-            var feed = await _giftWishlistServiceClient.GetFeedAsync(currentUserId, page, pageSize);
-            return Ok(feed);
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"Feed request timeout: {ex.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable. Please try again later." });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching feed: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(502, new { message = "Unable to fetch feed. Please try again later.", details = ex.Message });
+            }
         }
 
         [HttpPost("upload-image")]

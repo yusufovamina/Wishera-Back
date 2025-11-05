@@ -10,6 +10,7 @@ using WisheraApp.DTO;
 using WisheraApp.Models;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using user_service.Middleware;
+using user_service.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +18,11 @@ var builder = WebApplication.CreateBuilder(args);
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5001";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-builder.Services.AddControllers().ConfigureApplicationPartManager(pm =>
+builder.Services.AddControllers(options =>
+{
+	// Add CORS result filter to ensure headers are always present
+	options.Filters.Add<CorsResultFilter>();
+}).ConfigureApplicationPartManager(pm =>
 {
 	pm.ApplicationParts.Clear();
 	pm.ApplicationParts.Add(new AssemblyPart(typeof(Program).Assembly));

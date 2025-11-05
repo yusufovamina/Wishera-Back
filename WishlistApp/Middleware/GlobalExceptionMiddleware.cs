@@ -37,6 +37,13 @@ namespace WisheraApp.Middleware
 
         private async Task HandleExceptionAsync(HttpContext context, Exception exception)
         {
+            // If response has started, we can't modify headers
+            if (context.Response.HasStarted)
+            {
+                _logger.LogWarning("Response has already started, cannot add CORS headers");
+                return;
+            }
+
             var statusCode = HttpStatusCode.InternalServerError;
             var message = "An error occurred while processing your request.";
 
@@ -56,13 +63,23 @@ namespace WisheraApp.Middleware
                 statusCode = HttpStatusCode.Unauthorized;
                 message = "Unauthorized access.";
             }
+            else if (exception is TimeoutException)
+            {
+                statusCode = HttpStatusCode.BadGateway;
+                message = "Service temporarily unavailable. Please try again later.";
+            }
 
+            // Clear any existing response and ensure CORS headers are included
+            context.Response.Clear();
+            
             // Ensure CORS headers are included in error response
             var origin = context.Request.Headers["Origin"].ToString();
             if (!string.IsNullOrEmpty(origin) && AllowedOrigins.Contains(origin))
             {
-                context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
-                context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+                context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+                context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+                context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+                context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
             }
 
             var response = new

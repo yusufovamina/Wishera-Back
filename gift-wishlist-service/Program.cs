@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using gift_wishlist_service.Middleware;
+using gift_wishlist_service.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +18,11 @@ var builder = WebApplication.CreateBuilder(args);
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5003";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-builder.Services.AddControllers().ConfigureApplicationPartManager(apm =>
+builder.Services.AddControllers(options =>
+{
+    // Add CORS result filter to ensure headers are always present
+    options.Filters.Add<CorsResultFilter>();
+}).ConfigureApplicationPartManager(apm =>
 {
     apm.ApplicationParts.Clear();
     apm.ApplicationParts.Add(new AssemblyPart(typeof(Program).Assembly));
@@ -166,6 +171,27 @@ app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Ensure CORS headers are applied to all error responses (backup for when CORS middleware misses them)
+app.Use(async (context, next) =>
+{
+    await next();
+    
+    // If this is an error response and CORS headers aren't present, add them
+    // Only modify if response hasn't started
+    if (!context.Response.HasStarted && 
+        context.Response.StatusCode >= 400 && 
+        !context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+    {
+        var origin = context.Request.Headers["Origin"].ToString();
+        var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+        if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+        {
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        }
+    }
+});
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok("Healthy"));

@@ -15,9 +15,13 @@ using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure port for Render.com
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5001";
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+// Configure port for Render.com - Render provides PORT environment variable
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    // Use + to bind to all interfaces (both IPv4 and IPv6)
+    builder.WebHost.UseUrls($"http://+:{port}");
+}
 
 builder.Services.AddControllers(options =>
 {

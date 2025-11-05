@@ -18,6 +18,14 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure port for Render.com - Render provides PORT environment variable
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrEmpty(port))
+{
+    // Use + to bind to all interfaces (both IPv4 and IPv6)
+    builder.WebHost.UseUrls($"http://+:{port}");
+}
+
 // Messaging-only: no persistence or auth required for delivery
 
 
@@ -34,7 +42,9 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
         ?? cfg.GetConnectionString("MongoDB");
     if (string.IsNullOrWhiteSpace(mongoUrl))
     {
-        throw new InvalidOperationException("MongoDB connection string is not configured. Set ChatMongo:ConnectionString or MONGO_URL.");
+        Console.WriteLine("WARNING: MongoDB connection string is not configured. Set ChatMongo:ConnectionString or MONGO_URL.");
+        // Return a dummy client to prevent startup failure - service can still run for SignalR
+        return new MongoClient("mongodb://localhost:27017");
     }
     return new MongoClient(mongoUrl);
 });

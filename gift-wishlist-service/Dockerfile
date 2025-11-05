@@ -2,8 +2,6 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
 EXPOSE 5300
 
-ENV ASPNETCORE_URLS=http://+:5300
-
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 # Copy all source files in dependency order (user-service → WishlistApp → gift-wishlist-service)

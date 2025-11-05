@@ -1,5 +1,6 @@
+extern alias WishlistApp;
 using MongoDB.Driver;
-using WisheraApp.Models;
+using WishlistApp::WisheraApp.Models;
 
 namespace gift_wishlist_service.Services
 {

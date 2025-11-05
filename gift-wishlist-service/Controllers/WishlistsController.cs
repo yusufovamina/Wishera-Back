@@ -1,7 +1,8 @@
+extern alias WishlistApp;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using WisheraApp.DTO;
+using WishlistApp::WisheraApp.DTO;
 using gift_wishlist_service.Services;
 
 namespace gift_wishlist_service.Controllers
@@ -11,9 +12,9 @@ namespace gift_wishlist_service.Controllers
     [Route("api/[controller]")]
     public class WishlistsController : ControllerBase
     {
-        private readonly WisheraApp.Services.IWishlistService _wishlistService;
+        private readonly WishlistApp::WisheraApp.Services.IWishlistService _wishlistService;
 
-        public WishlistsController(WisheraApp.Services.IWishlistService wishlistService)
+        public WishlistsController(WishlistApp::WisheraApp.Services.IWishlistService wishlistService)
         {
             _wishlistService = wishlistService;
         }

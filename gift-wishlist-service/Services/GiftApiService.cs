@@ -1,7 +1,8 @@
+extern alias WishlistApp;
 using Microsoft.AspNetCore.Http;
 using MongoDB.Driver;
-using WisheraApp.Models;
-using WisheraApp.DTO;
+using WishlistApp::WisheraApp.DTO;
+using WishlistApp::WisheraApp.Models;
 
 namespace gift_wishlist_service.Services
 {

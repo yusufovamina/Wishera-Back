@@ -1,6 +1,7 @@
+extern alias WishlistApp;
 using MongoDB.Driver;
-using WisheraApp.DTO;
-using WisheraApp.Models;
+using WishlistApp::WisheraApp.DTO;
+using WishlistApp::WisheraApp.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CloudinaryDotNet;
@@ -21,7 +22,7 @@ namespace gift_wishlist_service.Services
 
    
 
-    public class WishlistService : WisheraApp.Services.IWishlistService
+    public class WishlistService : WishlistApp::WisheraApp.Services.IWishlistService
     {
         private readonly MongoDbContext _dbContext;
         private readonly ICloudinaryService _cloudinaryService;

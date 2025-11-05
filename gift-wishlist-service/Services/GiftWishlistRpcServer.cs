@@ -1,10 +1,11 @@
+extern alias WishlistApp;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WisheraApp.DTO;
-using WisheraApp.Models;
+using WishlistApp::WisheraApp.DTO;
+using WishlistApp::WisheraApp.Models;
 using MongoDB.Driver;
 
 namespace gift_wishlist_service.Services
@@ -12,7 +13,7 @@ namespace gift_wishlist_service.Services
     public class GiftWishlistRpcServer : IHostedService, IDisposable
     {
         private readonly IConfiguration _configuration;
-        private readonly WisheraApp.Services.IWishlistService _wishlistService;
+        private readonly WishlistApp::WisheraApp.Services.IWishlistService _wishlistService;
         private readonly gift_wishlist_service.Services.ICloudinaryService _cloudinaryService;
         private readonly gift_wishlist_service.Services.MongoDbContext _dbContext;
         private IConnection? _connection;
@@ -24,7 +25,7 @@ namespace gift_wishlist_service.Services
 
         public GiftWishlistRpcServer(
             IConfiguration configuration, 
-            WisheraApp.Services.IWishlistService wishlistService,
+            WishlistApp::WisheraApp.Services.IWishlistService wishlistService,
             gift_wishlist_service.Services.ICloudinaryService cloudinaryService,
             gift_wishlist_service.Services.MongoDbContext dbContext)
         {

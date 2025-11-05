@@ -1,9 +1,10 @@
+extern alias WishlistApp;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using gift_wishlist_service.Services;
-using WisheraApp.Models;
-using WisheraApp.DTO;
+using WishlistApp::WisheraApp.DTO;
+using WishlistApp::WisheraApp.Models;
 
 namespace gift_wishlist_service.Controllers
 {

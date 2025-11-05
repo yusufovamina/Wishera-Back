@@ -1,11 +1,12 @@
+extern alias WishlistApp;
 using CloudinaryDotNet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using System.Text;
 using gift_wishlist_service.Services;
-using WisheraApp.DTO;
-using WisheraApp.Models;
+using WishlistApp::WisheraApp.DTO;
+using WishlistApp::WisheraApp.Models;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
@@ -125,7 +126,7 @@ builder.Services
     });
 
 // Register core services (match hosted service singleton lifetime)
-builder.Services.AddSingleton<WisheraApp.Services.IWishlistService, WishlistService>();
+builder.Services.AddSingleton<WishlistApp::WisheraApp.Services.IWishlistService, WishlistService>();
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 builder.Services.AddSingleton<IGiftApiService, GiftApiService>();
 builder.Services.AddSingleton<ICacheService, CacheService>();

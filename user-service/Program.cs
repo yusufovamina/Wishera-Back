@@ -56,7 +56,8 @@ builder.Services.AddCors(options =>
 			"http://localhost:19006",     // Expo tunnel
 			"http://127.0.0.1:8081",       // iOS simulator
 			"http://10.0.2.2:8081",       // Android emulator
-			"https://wishera.vercel.app"  // Production frontend
+			"https://wishera.vercel.app", // Production frontend
+			"https://wishera.vercel.app/" // Production frontend (with trailing slash)
 		)
 		.AllowAnyHeader()
 		.AllowAnyMethod()
@@ -113,7 +114,7 @@ builder.Services
 				
 				// Add CORS headers to error response (validate origin)
 				var origin = context.Request.Headers["Origin"].ToString();
-				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app", "https://wishera.vercel.app/" };
 				if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
 				{
 					context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
@@ -132,7 +133,7 @@ builder.Services
 				
 				// Add CORS headers to error response (validate origin)
 				var origin = context.Request.Headers["Origin"].ToString();
-				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app", "https://wishera.vercel.app/" };
 				if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
 				{
 					context.Response.Headers.Append("Access-Control-Allow-Origin", origin);

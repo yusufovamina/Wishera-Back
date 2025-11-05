@@ -69,7 +69,8 @@ builder.Services.AddCors(c =>
             "http://127.0.0.1:3001",      // iOS simulator web alt
             "http://127.0.0.1:8081",      // iOS simulator
             "http://10.0.2.2:8081",       // Android emulator
-            "https://wishera.vercel.app"  // Production frontend
+            "https://wishera.vercel.app", // Production frontend
+            "https://wishera.vercel.app/" // Production frontend (with trailing slash)
         )
         .AllowAnyMethod()
         .AllowAnyHeader()

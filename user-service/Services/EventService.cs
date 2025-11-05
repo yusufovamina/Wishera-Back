@@ -304,6 +304,19 @@ namespace user_service.Services
                 return eventDtos;
             }, TimeSpan.FromMinutes(10));
 
+            // Handle null cache result
+            if (cachedData == null)
+            {
+                return new EventListDTO
+                {
+                    Events = new List<EventDTO>(),
+                    TotalCount = 0,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalPages = 0
+                };
+            }
+
             // Apply pagination to the cached data
             var totalCount = cachedData.Count;
             var skip = (page - 1) * pageSize;

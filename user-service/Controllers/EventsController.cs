@@ -113,13 +113,24 @@ namespace user_service.Controllers
         {
             try
             {
-                var userId = GetCurrentUserId() ?? string.Empty;
+                var userId = GetCurrentUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { message = "User not authenticated. Please log in." });
+                }
+
                 var events = await _eventService.GetInvitedEventsAsync(userId, page, pageSize);
                 return Ok(events);
             }
             catch (ArgumentException ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching invited events: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(500, new { message = "An error occurred while fetching invited events", details = ex.Message });
             }
         }
 

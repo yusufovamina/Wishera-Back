@@ -48,14 +48,23 @@ builder.Services.AddCors(options =>
 	});
 });
 
-// MongoDB
+// MongoDB with timeout configuration
 builder.Services.AddSingleton<IMongoClient>(_ =>
 {
 	// Use the same key casing as other services if present
 	var connectionString = builder.Configuration.GetConnectionString("MongoDB")
 		?? builder.Configuration.GetConnectionString("MongoDb")
 		?? "mongodb+srv://yusufovamina:Fh9nz7EKJuPZHViL@cluster.9qjuc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster";
-	return new MongoClient(connectionString);
+	
+	// Configure MongoDB client settings with timeouts
+	var settings = MongoClientSettings.FromConnectionString(connectionString);
+	settings.ConnectTimeout = TimeSpan.FromSeconds(5); // 5 seconds to establish connection
+	settings.ServerSelectionTimeout = TimeSpan.FromSeconds(5); // 5 seconds to select server
+	settings.SocketTimeout = TimeSpan.FromSeconds(10); // 10 seconds for socket operations
+	settings.MaxConnectionPoolSize = 100;
+	settings.MinConnectionPoolSize = 10;
+	
+	return new MongoClient(settings);
 });
 builder.Services.AddSingleton(provider =>
 {

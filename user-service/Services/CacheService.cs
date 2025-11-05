@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
@@ -19,9 +20,11 @@ namespace user_service.Services
 
         public async Task<T?> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan ttl)
         {
+            // Use cancellation token with short timeout (500ms) to fail fast
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
             try
             {
-                var cached = await _cache.GetStringAsync(key);
+                var cached = await _cache.GetStringAsync(key, cts.Token);
                 if (!string.IsNullOrEmpty(cached))
                 {
                     var deserialized = JsonSerializer.Deserialize<T>(cached);
@@ -30,6 +33,11 @@ namespace user_service.Services
                         return deserialized;
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Cache read timed out, log and continue to factory
+                _logger.LogWarning("Cache read timed out for key: {Key}", key);
             }
             catch (Exception ex)
             {
@@ -42,15 +50,21 @@ namespace user_service.Services
             {
                 var value = await factory();
 
+                // Try to cache the value (fire and forget with short timeout)
                 try
                 {
-                    // Try to cache the value
+                    using var writeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
                     var json = JsonSerializer.Serialize(value);
                     var options = new DistributedCacheEntryOptions
                     {
                         AbsoluteExpirationRelativeToNow = ttl
                     };
-                    await _cache.SetStringAsync(key, json, options);
+                    await _cache.SetStringAsync(key, json, options, writeCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Cache write timed out, log but don't fail the request
+                    _logger.LogWarning("Cache write timed out for key: {Key}", key);
                 }
                 catch (Exception ex)
                 {
@@ -72,7 +86,14 @@ namespace user_service.Services
         {
             try
             {
-                await _cache.RemoveAsync(key);
+                // Use cancellation token with short timeout (500ms) to fail fast
+                using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+                await _cache.RemoveAsync(key, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Cache removal timed out, log but don't fail
+                _logger.LogWarning("Cache removal timed out for key: {Key}", key);
             }
             catch (Exception ex)
             {

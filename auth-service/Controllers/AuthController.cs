@@ -56,6 +56,11 @@ namespace auth_service.Controllers
                 var response = await _authService.LoginAsync(loginDto);
                 return Ok(response);
             }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"Login timeout: {ex.Message}");
+                return StatusCode(504, new { message = ex.Message });
+            }
             catch (InvalidOperationException ex)
             {
                 return BadRequest(new { message = ex.Message });

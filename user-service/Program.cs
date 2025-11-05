@@ -11,6 +11,7 @@ using WisheraApp.Models;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using user_service.Middleware;
 using user_service.Filters;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -148,13 +149,23 @@ builder.Services.AddTransient<GlobalExceptionMiddleware>();
 // RabbitMQ RPC server
 builder.Services.AddHostedService<UserRpcServer>();
 
-// Redis distributed cache
+// Redis distributed cache with improved connection resilience
 var redisConnection = builder.Configuration.GetConnectionString("Redis")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__Redis")
     ?? "localhost:6379";
+
+// Configure Redis with timeouts and retry logic
+var redisOptions = ConfigurationOptions.Parse(redisConnection);
+redisOptions.ConnectTimeout = 2000; // 2 seconds to establish connection
+redisOptions.SyncTimeout = 500; // 500ms for synchronous operations
+redisOptions.AsyncTimeout = 500; // 500ms for async operations
+redisOptions.ConnectRetry = 3; // Retry connection 3 times
+redisOptions.AbortOnConnectFail = false; // Don't abort on connection failure, allow retries
+redisOptions.ReconnectRetryPolicy = new ExponentialRetry(100, 500); // Exponential backoff for reconnects
+
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = redisConnection;
+    options.ConfigurationOptions = redisOptions;
     options.InstanceName = "wishera:";
 });
 

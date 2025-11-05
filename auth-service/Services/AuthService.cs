@@ -3,6 +3,7 @@ using MongoDB.Driver;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading;
 using auth_service.DTO;
 using auth_service.Models;
 using auth_service.Services;
@@ -109,22 +110,47 @@ namespace auth_service.Services
 
         public async Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto)
         {
-            var emailNormalized = loginDto.Email.Trim().ToLowerInvariant();
-            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync()
-                ?? throw new InvalidOperationException("Invalid email or password");
+            // Use cancellation token with timeout (15 seconds for login)
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            
+            try
+            {
+                var emailNormalized = loginDto.Email.Trim().ToLowerInvariant();
+                var user = await _dbContext.Users
+                    .Find(u => u.EmailNormalized == emailNormalized)
+                    .FirstOrDefaultAsync(cts.Token)
+                    ?? throw new InvalidOperationException("Invalid email or password");
 
-            if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
-                throw new InvalidOperationException("Invalid email or password");
+                if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
+                    throw new InvalidOperationException("Invalid email or password");
 
-            // Check if email is verified
-            if (!user.IsEmailVerified)
-                throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification link.");
+                // Check if email is verified
+                if (!user.IsEmailVerified)
+                    throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification link.");
 
-            // Update last active timestamp
-            var update = Builders<User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
-            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+                // Update last active timestamp (fire and forget if it fails)
+                try
+                {
+                    var update = Builders<User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
+                    await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update, cancellationToken: cts.Token);
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't fail login if update fails
+                    Console.WriteLine($"Failed to update last active timestamp: {ex.Message}");
+                }
 
-            return await GenerateAuthResponseAsync(user);
+                return await GenerateAuthResponseAsync(user);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new TimeoutException("Login request timed out. Please try again.");
+            }
+            catch (MongoException ex)
+            {
+                Console.WriteLine($"MongoDB error during login: {ex.Message}");
+                throw new InvalidOperationException("Database connection error. Please try again later.");
+            }
         }
 
         public async Task<bool> IsEmailUniqueAsync(string email)

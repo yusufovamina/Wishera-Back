@@ -65,6 +65,7 @@ namespace user_service.Services
 				Interests = isProfilePublic ? user.Interests : new List<string>(),
 				AvatarUrl = user.AvatarUrl,
 				Birthday = isProfilePublic ? user.Birthday : null,
+				CreatedAt = user.CreatedAt,
 				FollowersCount = followersCount,
 				FollowingCount = followingCount,
 				IsFollowing = isFollowing,

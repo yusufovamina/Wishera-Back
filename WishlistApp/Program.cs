@@ -3,6 +3,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using WisheraApp.Services;
+using WisheraApp.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +30,49 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+        
+        // Improve error handling for authentication failures
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                Console.WriteLine($"JWT Authentication failed: {context.Exception.Message}");
+                
+                // Add CORS headers to error response (validate origin)
+                var origin = context.Request.Headers["Origin"].ToString();
+                var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+                if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+                {
+                    context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
+                    context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+                }
+                
+                context.NoResult();
+                context.Response.StatusCode = 401;
+                context.Response.ContentType = "application/json";
+                var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication failed. Please log in again." });
+                return context.Response.WriteAsync(result);
+            },
+            OnChallenge = context =>
+            {
+                Console.WriteLine($"JWT Challenge: {context.Error}, {context.ErrorDescription}");
+                
+                // Add CORS headers to error response (validate origin)
+                var origin = context.Request.Headers["Origin"].ToString();
+                var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+                if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+                {
+                    context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
+                    context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+                }
+                
+                context.HandleResponse();
+                context.Response.StatusCode = 401;
+                context.Response.ContentType = "application/json";
+                var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication required. Please log in." });
+                return context.Response.WriteAsync(result);
+            }
+        };
     });
 
 // Register services
@@ -39,6 +83,9 @@ builder.Services.AddSingleton<IGiftWishlistServiceClient, GiftWishlistServiceCli
 
 // Register Chat Integration Service
 builder.Services.AddHttpClient<IChatIntegrationService, ChatIntegrationService>();
+
+// Register global exception handling middleware
+builder.Services.AddTransient<GlobalExceptionMiddleware>();
 
 // Configure Swagger
 builder.Services.AddEndpointsApiExplorer();
@@ -83,7 +130,12 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", builder =>
     {
         builder.WithOrigins(
-            "http://localhost:3000",      // Web frontend (local dev)
+            "http://localhost:3000",      // Web frontend
+            "http://localhost:8081",      // React Native Metro bundler
+            "http://localhost:19000",     // Expo development
+            "http://localhost:19006",     // Expo tunnel
+            "http://127.0.0.1:8081",       // iOS simulator
+            "http://10.0.2.2:8081",       // Android emulator
             "https://wishera.vercel.app"  // Production frontend
         )
         .AllowAnyMethod()
@@ -104,6 +156,9 @@ if (app.Environment.IsDevelopment())
 // In dev we run HTTP locally; disable HTTPS redirection to avoid port mismatch
 // app.UseHttpsRedirection();
 app.UseCors("AllowAll");
+
+// Add global exception handling middleware (must be after CORS but before controllers)
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();

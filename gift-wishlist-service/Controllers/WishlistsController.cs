@@ -93,12 +93,25 @@ namespace gift_wishlist_service.Controllers
         [HttpGet("liked")]
         public async Task<ActionResult<List<WishlistFeedDTO>>> GetLikedWishlists([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var currentUserId = GetCurrentUserId();
-            if (string.IsNullOrEmpty(currentUserId))
-                return Unauthorized(new { message = "User not authenticated" });
+            try
+            {
+                var currentUserId = GetCurrentUserId();
+                if (string.IsNullOrEmpty(currentUserId))
+                    return Unauthorized(new { message = "User not authenticated. Please log in." });
 
-            var likedWishlists = await _wishlistService.GetLikedWishlistsAsync(currentUserId, page, pageSize);
-            return Ok(likedWishlists);
+                var likedWishlists = await _wishlistService.GetLikedWishlistsAsync(currentUserId, page, pageSize);
+                return Ok(likedWishlists);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching liked wishlists: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(500, new { message = "An error occurred while fetching liked wishlists", details = ex.Message });
+            }
         }
 
         [HttpGet("{id}")]

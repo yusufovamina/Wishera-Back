@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using auth_service.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,6 +66,9 @@ builder.Services.AddSingleton<MongoDbContext>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+// Register global exception handling middleware
+builder.Services.AddTransient<GlobalExceptionMiddleware>();
+
 // Authentication (JWT for API + Cookie for external flow) and external providers
 builder.Services
     .AddAuthentication(options =>
@@ -86,6 +90,49 @@ builder.Services
             ValidateAudience = false,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
+        };
+        
+        // Improve error handling for authentication failures
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                Console.WriteLine($"JWT Authentication failed: {context.Exception.Message}");
+                
+                // Add CORS headers to error response (validate origin)
+                var origin = context.Request.Headers["Origin"].ToString();
+                var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+                if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+                {
+                    context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
+                    context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+                }
+                
+                context.NoResult();
+                context.Response.StatusCode = 401;
+                context.Response.ContentType = "application/json";
+                var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication failed. Please log in again." });
+                return context.Response.WriteAsync(result);
+            },
+            OnChallenge = context =>
+            {
+                Console.WriteLine($"JWT Challenge: {context.Error}, {context.ErrorDescription}");
+                
+                // Add CORS headers to error response (validate origin)
+                var origin = context.Request.Headers["Origin"].ToString();
+                var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app" };
+                if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+                {
+                    context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
+                    context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
+                }
+                
+                context.HandleResponse();
+                context.Response.StatusCode = 401;
+                context.Response.ContentType = "application/json";
+                var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication required. Please log in." });
+                return context.Response.WriteAsync(result);
+            }
         };
     })
     .AddCookie("External", options =>
@@ -114,6 +161,9 @@ if (!app.Environment.IsDevelopment())
 
 // Apply CORS before auth and endpoints
 app.UseCors(CorsPolicyName);
+
+// Add global exception handling middleware (must be after CORS but before controllers)
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
 // Add authentication and authorization middleware (required for protected endpoints)
 app.UseAuthentication();

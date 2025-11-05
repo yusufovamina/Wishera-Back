@@ -2,8 +2,6 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
 EXPOSE 5219
 
-ENV ASPNETCORE_URLS=http://+:5219
-
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 COPY ./auth-service/auth-service.csproj /src/auth-service.csproj

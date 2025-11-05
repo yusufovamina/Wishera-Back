@@ -11,12 +11,19 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using gift_wishlist_service.Middleware;
 using gift_wishlist_service.Filters;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure port for Render.com
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5003";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+// Configure request timeout (30 seconds)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
+});
 
 builder.Services.AddControllers(options =>
 {
@@ -33,8 +40,16 @@ builder.Services.AddSwaggerGen(options =>
     options.DocumentFilter<gift_wishlist_service.SwaggerFilters.IncludeOnlyWishlistAndGiftFilter>();
 });
 
-// Mongo
-var mongoClient = new MongoClient(builder.Configuration.GetConnectionString("MongoDB"));
+// MongoDB with timeout configuration
+var mongoConnectionString = builder.Configuration.GetConnectionString("MongoDB");
+var mongoSettings = MongoClientSettings.FromConnectionString(mongoConnectionString);
+mongoSettings.ConnectTimeout = TimeSpan.FromSeconds(5); // 5 seconds to establish connection
+mongoSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(5); // 5 seconds to select server
+mongoSettings.SocketTimeout = TimeSpan.FromSeconds(10); // 10 seconds for socket operations
+mongoSettings.MaxConnectionPoolSize = 100;
+mongoSettings.MinConnectionPoolSize = 10;
+
+var mongoClient = new MongoClient(mongoSettings);
 var database = mongoClient.GetDatabase("WishlistApp");
 builder.Services.AddSingleton(database);
 builder.Services.AddSingleton<MongoDbContext>(sp => new MongoDbContext(database));
@@ -124,13 +139,23 @@ builder.Services.AddHttpClient<INotificationClient, NotificationClient>();
 // RabbitMQ RPC server
 builder.Services.AddHostedService<GiftWishlistRpcServer>();
 
-// Redis distributed cache
+// Redis distributed cache with improved connection resilience
 var redisConnection = builder.Configuration.GetConnectionString("Redis")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__Redis")
     ?? "localhost:6379";
+
+// Configure Redis with timeouts and retry logic
+var redisOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnection);
+redisOptions.ConnectTimeout = 2000; // 2 seconds to establish connection
+redisOptions.SyncTimeout = 500; // 500ms for synchronous operations
+redisOptions.AsyncTimeout = 500; // 500ms for async operations
+redisOptions.ConnectRetry = 3; // Retry connection 3 times
+redisOptions.AbortOnConnectFail = false; // Don't abort on connection failure, allow retries
+redisOptions.ReconnectRetryPolicy = new StackExchange.Redis.ExponentialRetry(100, 500); // Exponential backoff for reconnects
+
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = redisConnection;
+    options.ConfigurationOptions = redisOptions;
     options.InstanceName = "wishera:";
 });
 

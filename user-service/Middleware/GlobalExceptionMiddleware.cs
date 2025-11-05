@@ -63,6 +63,11 @@ namespace user_service.Middleware
                 statusCode = HttpStatusCode.Unauthorized;
                 message = "Unauthorized access.";
             }
+            else if (exception is TimeoutException)
+            {
+                statusCode = HttpStatusCode.GatewayTimeout;
+                message = exception.Message;
+            }
 
             // Clear any existing response and ensure CORS headers are included
             context.Response.Clear();

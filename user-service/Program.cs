@@ -60,8 +60,16 @@ builder.Services.AddCors(options =>
 	});
 });
 
-// Mongo
-var mongoClient = new MongoClient(builder.Configuration.GetConnectionString("MongoDB"));
+// MongoDB with timeout configuration
+var mongoConnectionString = builder.Configuration.GetConnectionString("MongoDB");
+var mongoSettings = MongoClientSettings.FromConnectionString(mongoConnectionString);
+mongoSettings.ConnectTimeout = TimeSpan.FromSeconds(5); // 5 seconds to establish connection
+mongoSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(5); // 5 seconds to select server
+mongoSettings.SocketTimeout = TimeSpan.FromSeconds(10); // 10 seconds for socket operations
+mongoSettings.MaxConnectionPoolSize = 100;
+mongoSettings.MinConnectionPoolSize = 10;
+
+var mongoClient = new MongoClient(mongoSettings);
 var database = mongoClient.GetDatabase("WishlistApp");
 builder.Services.AddSingleton(database);
 builder.Services.AddSingleton<MongoDbContext>(sp => new MongoDbContext(database));

@@ -84,6 +84,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddHttpClient<IAuthService, AuthService>();
 builder.Services.AddSingleton<IUserServiceClient, UserServiceClient>();
 builder.Services.AddSingleton<IGiftWishlistServiceClient, GiftWishlistServiceClient>();
+builder.Services.AddHttpClient<IEventServiceClient, EventServiceClient>();
 // Email is handled in auth-service
 
 // Register Chat Integration Service

@@ -75,9 +75,24 @@ namespace user_service.Controllers
         {
             try
             {
-                var userId = GetCurrentUserId() ?? string.Empty;
+                var userId = GetCurrentUserId();
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { message = "User not authenticated. Please log in." });
+                }
+
+                if (createEventDto == null)
+                {
+                    return BadRequest(new { message = "Event data is required." });
+                }
+
                 var eventDto = await _eventService.CreateEventAsync(userId, createEventDto);
                 return CreatedAtAction(nameof(GetEvent), new { id = eventDto.Id }, eventDto);
+            }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"Event creation timeout: {ex.Message}");
+                return StatusCode(504, new { message = "Request timed out. Please try again." });
             }
             catch (ArgumentException ex)
             {
@@ -90,6 +105,12 @@ namespace user_service.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating event: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(500, new { message = "An error occurred while creating the event. Please try again later.", details = ex.Message });
             }
         }
 

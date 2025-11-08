@@ -21,12 +21,23 @@ namespace WisheraApp.Services
 
     public class UserServiceClient : IUserServiceClient, IDisposable
     {
-        private readonly IConnection _connection;
-        private readonly IModel _channel;
+        private readonly IConnection? _connection;
+        private readonly IModel? _channel;
         private readonly string _exchange;
+        private readonly HttpClient _httpClient;
+        private readonly string _userServiceUrl;
+        private readonly bool _useRabbitMq;
 
-        public UserServiceClient(IConfiguration configuration)
+        public UserServiceClient(IConfiguration configuration, IHttpClientFactory httpClientFactory)
         {
+            _exchange = "user.exchange";
+            _userServiceUrl = Environment.GetEnvironmentVariable("USER_SERVICE_URL")
+                ?? configuration["UserServiceUrl"]
+                ?? "https://wishera-user-service.onrender.com";
+            _httpClient = httpClientFactory.CreateClient();
+            _httpClient.Timeout = TimeSpan.FromSeconds(30);
+            _httpClient.BaseAddress = new Uri(_userServiceUrl);
+
             // Support environment variables for Render.com/CloudAMQP
             var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
                 ?? configuration["RabbitMq:HostName"] 
@@ -37,32 +48,56 @@ namespace WisheraApp.Services
             var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
                 ?? configuration["RabbitMq:Password"] 
                 ?? "guest";
-            var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
-                ?? configuration["RabbitMq:VirtualHost"] 
-                ?? "/";
             
-            // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
-            if (virtualHost == "/" && userName != "guest")
+            // Only use RabbitMQ if credentials are provided (not localhost/guest)
+            _useRabbitMq = hostName != "localhost" || userName != "guest";
+            
+            if (_useRabbitMq)
             {
-                virtualHost = userName;
-            }
+                try
+                {
+                    var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
+                        ?? configuration["RabbitMq:VirtualHost"] 
+                        ?? "/";
+                    
+                    // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
+                    if (virtualHost == "/" && userName != "guest")
+                    {
+                        virtualHost = userName;
+                    }
 
-            var factory = new ConnectionFactory
+                    var factory = new ConnectionFactory
+                    {
+                        HostName = hostName,
+                        UserName = userName,
+                        Password = password,
+                        VirtualHost = virtualHost,
+                        Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? configuration["RabbitMq:Port"], out var port) ? port : 5672
+                    };
+                    _connection = factory.CreateConnection();
+                    _channel = _connection.CreateModel();
+                    _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
+                    Console.WriteLine("UserServiceClient: RabbitMQ connection established");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"UserServiceClient: Failed to connect to RabbitMQ: {ex.Message}. Falling back to HTTP.");
+                    _useRabbitMq = false;
+                }
+            }
+            else
             {
-                HostName = hostName,
-                UserName = userName,
-                Password = password,
-                VirtualHost = virtualHost,
-                Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? configuration["RabbitMq:Port"], out var port) ? port : 5672
-            };
-            _exchange = "user.exchange";
-            _connection = factory.CreateConnection();
-            _channel = _connection.CreateModel();
-            _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
+                Console.WriteLine("UserServiceClient: Using HTTP fallback (RabbitMQ not configured)");
+            }
         }
 
         public async Task<UserProfileDTO> GetUserProfileAsync(string userId, string currentUserId)
         {
+            if (!_useRabbitMq || _channel == null)
+            {
+                throw new InvalidOperationException("RabbitMQ is not available. Use HTTP fallback in controller.");
+            }
+            
             var payload = JsonSerializer.Serialize(new { UserId = userId, CurrentUserId = currentUserId });
             var response = await SendRpcAsync("user.profile", payload);
             return JsonSerializer.Deserialize<UserProfileDTO>(response)!;
@@ -122,6 +157,11 @@ namespace WisheraApp.Services
 
         private async Task<string> SendRpcAsync(string routingKey, string payload)
         {
+            if (_channel == null)
+            {
+                throw new InvalidOperationException("RabbitMQ channel is not available");
+            }
+
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30 second timeout
 

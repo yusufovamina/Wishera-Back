@@ -12,10 +12,24 @@ namespace WisheraApp.Controllers
     public class UsersController : ControllerBase
     {
         private readonly IUserServiceClient _userServiceClient;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
 
-        public UsersController(IUserServiceClient userServiceClient)
+        public UsersController(IUserServiceClient userServiceClient, IHttpClientFactory httpClientFactory, IConfiguration configuration)
         {
             _userServiceClient = userServiceClient;
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
+        }
+
+        private string GetAuthToken()
+        {
+            var authHeader = Request.Headers["Authorization"].ToString();
+            if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+            {
+                return string.Empty;
+            }
+            return authHeader.Substring(7); // Remove "Bearer " prefix
         }
 
         private string? GetCurrentUserId()
@@ -38,6 +52,16 @@ namespace WisheraApp.Controllers
                 var profile = await _userServiceClient.GetUserProfileAsync(id, currentUserId);
                 return Ok(profile);
             }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"GetUserProfile timeout, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFallback(id, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"GetUserProfile RabbitMQ not available, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFallback(id, ex.Message);
+            }
             catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "User not found" });
@@ -45,6 +69,100 @@ namespace WisheraApp.Controllers
             catch (ArgumentException ex)
             {
                 return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetUserProfile error, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFallback(id, ex.Message);
+            }
+        }
+
+        private async Task<ActionResult<UserProfileDTO>> TryHttpFallback(string userId, string originalError)
+        {
+            try
+            {
+                return await GetUserProfileViaHttpAsync(userId);
+            }
+            catch (Exception httpEx)
+            {
+                Console.WriteLine($"HTTP fallback failed: {httpEx.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable. The user-service may not be running or is not accessible.", error = httpEx.Message, originalError = originalError });
+            }
+        }
+
+        private async Task<ActionResult<UserProfileDTO>> GetUserProfileViaHttpAsync(string userId)
+        {
+            var userServiceUrl = Environment.GetEnvironmentVariable("USER_SERVICE_URL")
+                ?? _configuration["UserServiceUrl"]
+                ?? "https://wishera-user-service.onrender.com";
+            
+            var token = GetAuthToken();
+            var httpClient = _httpClientFactory.CreateClient("UserService");
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{userServiceUrl}/api/Users/{userId}");
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+            
+            var response = await httpClient.SendAsync(request);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return Unauthorized(new { message = "Authentication failed" });
+            }
+            
+            response.EnsureSuccessStatusCode();
+            var content = await response.Content.ReadAsStringAsync();
+            var profile = System.Text.Json.JsonSerializer.Deserialize<UserProfileDTO>(content, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            
+            if (profile == null)
+            {
+                return StatusCode(500, new { message = "Failed to deserialize user profile" });
+            }
+            
+            return Ok(profile);
+        }
+
+        [HttpGet("profile")]
+        public async Task<ActionResult<UserProfileDTO>> GetCurrentUserProfile()
+        {
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Unauthorized(new { message = "User not authenticated" });
+            }
+            try
+            {
+                var profile = await _userServiceClient.GetUserProfileAsync(currentUserId, currentUserId);
+                return Ok(profile);
+            }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"GetCurrentUserProfile timeout, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFallback(currentUserId, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"GetCurrentUserProfile RabbitMQ not available, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFallback(currentUserId, ex.Message);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetCurrentUserProfile error, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFallback(currentUserId, ex.Message);
             }
         }
 

@@ -33,6 +33,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 // Register services
 builder.Services.AddHttpClient<IAuthService, AuthService>();
+builder.Services.AddHttpClient(); // Add HttpClientFactory for UserServiceClient
 builder.Services.AddSingleton<IUserServiceClient, UserServiceClient>();
 builder.Services.AddSingleton<IGiftWishlistServiceClient, GiftWishlistServiceClient>();
 // Email is handled in auth-service

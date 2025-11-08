@@ -1,10 +1,12 @@
+extern alias WishlistApp;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WisheraApp.DTO;
-using WisheraApp.Models;
+using WishlistApp::WisheraApp.DTO;
+using WishlistApp::WisheraApp.Models;
+using WishlistApp::WisheraApp.Services;
 using MongoDB.Driver;
 
 namespace gift_wishlist_service.Services
@@ -12,7 +14,7 @@ namespace gift_wishlist_service.Services
     public class GiftWishlistRpcServer : IHostedService, IDisposable
     {
         private readonly IConfiguration _configuration;
-        private readonly WisheraApp.Services.IWishlistService _wishlistService;
+        private readonly IWishlistService _wishlistService;
         private readonly gift_wishlist_service.Services.ICloudinaryService _cloudinaryService;
         private readonly gift_wishlist_service.Services.MongoDbContext _dbContext;
         private IConnection? _connection;
@@ -24,7 +26,7 @@ namespace gift_wishlist_service.Services
 
         public GiftWishlistRpcServer(
             IConfiguration configuration, 
-            WisheraApp.Services.IWishlistService wishlistService,
+            IWishlistService wishlistService,
             gift_wishlist_service.Services.ICloudinaryService cloudinaryService,
             gift_wishlist_service.Services.MongoDbContext dbContext)
         {
@@ -383,14 +385,14 @@ namespace gift_wishlist_service.Services
     public class CreateWishlistRequestDTO
     {
         public string UserId { get; set; } = string.Empty;
-        public required CreateWishlistDTO CreateDto { get; set; }
+        public required WishlistApp::WisheraApp.DTO.CreateWishlistDTO CreateDto { get; set; }
     }
 
     public class UpdateWishlistRequestDTO
     {
         public string WishlistId { get; set; } = string.Empty;
         public string CurrentUserId { get; set; } = string.Empty;
-        public required UpdateWishlistDTO UpdateDto { get; set; }
+        public required WishlistApp::WisheraApp.DTO.UpdateWishlistDTO UpdateDto { get; set; }
     }
 
     public class UserWishlistsRequestDTO
@@ -418,14 +420,14 @@ namespace gift_wishlist_service.Services
     {
         public string WishlistId { get; set; } = string.Empty;
         public string CurrentUserId { get; set; } = string.Empty;
-        public required CreateCommentDTO CommentDto { get; set; }
+        public required WishlistApp::WisheraApp.DTO.CreateCommentDTO CommentDto { get; set; }
     }
 
     public class UpdateCommentRequestDTO
     {
         public string CommentId { get; set; } = string.Empty;
         public string CurrentUserId { get; set; } = string.Empty;
-        public required UpdateCommentDTO CommentDto { get; set; }
+        public required WishlistApp::WisheraApp.DTO.UpdateCommentDTO CommentDto { get; set; }
     }
 
     public class CommentActionRequestDTO

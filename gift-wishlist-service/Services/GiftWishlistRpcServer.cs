@@ -228,7 +228,8 @@ namespace gift_wishlist_service.Services
                         Name = createGiftData.Name,
                         Price = createGiftData.Price,
                         Category = createGiftData.Category,
-                        WishlistId = createGiftData.WishlistId
+                        WishlistId = createGiftData.WishlistId,
+                        UserId = createGiftData.UserId
                     };
                     if (createGiftData.ImageFile != null)
                     {
@@ -451,6 +452,7 @@ namespace gift_wishlist_service.Services
         public decimal Price { get; set; }
         public string Category { get; set; } = string.Empty;
         public string? WishlistId { get; set; }
+        public string? UserId { get; set; }
         public IFormFile? ImageFile { get; set; }
     }
 

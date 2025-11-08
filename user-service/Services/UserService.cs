@@ -42,7 +42,7 @@ namespace user_service.Services
 			// Cache is optional - don't let it block the request
 			try
 			{
-				var cacheKey = $"user:profile:{userId}:{currentUserId}";
+			var cacheKey = $"user:profile:{userId}:{currentUserId}";
 				return await _cache.GetOrSetAsync(cacheKey, async () => await BuildUserProfileAsync(userId, currentUserId), TimeSpan.FromMinutes(5))
 					?? await BuildUserProfileAsync(userId, currentUserId);
 			}
@@ -55,8 +55,8 @@ namespace user_service.Services
 		}
 
 		private async Task<UserProfileDTO> BuildUserProfileAsync(string userId, string currentUserId)
-		{
-			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+			{
+				var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null)
 				throw new KeyNotFoundException("User not found");
 
@@ -88,7 +88,7 @@ namespace user_service.Services
 				IsPrivate = user.IsPrivate,
 				WishlistCount = user.WishlistIds?.Count ?? 0
 			};
-			return profile;
+				return profile;
 		}
 
 		public async Task<UserProfileDTO> UpdateUserProfileAsync(string userId, UpdateUserProfileDTO updateDto)

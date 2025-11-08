@@ -133,11 +133,11 @@ if (!string.IsNullOrEmpty(redisConnection))
         }
         
         // Use the configured options
-        builder.Services.AddStackExchangeRedisCache(options =>
-        {
+builder.Services.AddStackExchangeRedisCache(options =>
+{
             options.ConfigurationOptions = configOptions;
-            options.InstanceName = "wishera:";
-        });
+    options.InstanceName = "wishera:";
+});
         
         Console.WriteLine($"Redis cache configured with connection string: {connectionString.Substring(0, Math.Min(50, connectionString.Length))}...");
         Console.WriteLine("Note: Redis is optional - service will work without it if connection fails.");

@@ -74,7 +74,7 @@ namespace user_service.Services
             }
 
             // If we got a cached value, use it
-            if (!string.IsNullOrEmpty(cached))
+                if (!string.IsNullOrEmpty(cached))
             {
                 try
                 {
@@ -113,7 +113,7 @@ namespace user_service.Services
 
             // Execute factory to get the value (this is the important part)
             // Always execute factory, even if cache failed
-            var value = await factory();
+                var value = await factory();
 
             // Try to cache the value asynchronously (fire and forget - don't wait for it)
             // Only try if Redis circuit breaker is open (available)
@@ -121,20 +121,20 @@ namespace user_service.Services
             {
                 _ = Task.Run(async () =>
                 {
-                    try
-                    {
+                try
+                {
                         using var writeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
-                        var json = JsonSerializer.Serialize(value);
-                        var options = new DistributedCacheEntryOptions
-                        {
-                            AbsoluteExpirationRelativeToNow = ttl
-                        };
-                        await _cache.SetStringAsync(key, json, options, writeCts.Token);
+                    var json = JsonSerializer.Serialize(value);
+                    var options = new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = ttl
+                    };
+                    await _cache.SetStringAsync(key, json, options, writeCts.Token);
                         // If write succeeds, reset failures
                         _consecutiveFailures = 0;
-                    }
+                }
                     catch
-                    {
+                {
                         // Silently ignore cache write failures
                         // Increment failure counter
                         _consecutiveFailures++;
@@ -146,9 +146,9 @@ namespace user_service.Services
                         }
                     }
                 });
-            }
+                }
 
-            return value;
+                return value;
         }
 
         public async Task RemoveAsync(string key)

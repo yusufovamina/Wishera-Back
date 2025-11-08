@@ -74,9 +74,9 @@ namespace WisheraApp.Services
                         VirtualHost = virtualHost,
                         Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? configuration["RabbitMq:Port"], out var port) ? port : 5672
                     };
-                    _connection = factory.CreateConnection();
-                    _channel = _connection.CreateModel();
-                    _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
+            _connection = factory.CreateConnection();
+            _channel = _connection.CreateModel();
+            _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
                     Console.WriteLine("UserServiceClient: RabbitMQ connection established");
                 }
                 catch (Exception ex)
@@ -167,26 +167,26 @@ namespace WisheraApp.Services
 
             try
             {
-                var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
-                var consumer = new EventingBasicConsumer(_channel);
+            var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
+            var consumer = new EventingBasicConsumer(_channel);
 
-                var correlationId = Guid.NewGuid().ToString();
-                consumer.Received += (model, ea) =>
+            var correlationId = Guid.NewGuid().ToString();
+            consumer.Received += (model, ea) =>
+            {
+                if (ea.BasicProperties.CorrelationId == correlationId)
                 {
-                    if (ea.BasicProperties.CorrelationId == correlationId)
-                    {
-                        var response = Encoding.UTF8.GetString(ea.Body.ToArray());
-                        tcs.TrySetResult(response);
-                    }
-                };
-                _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
+                    var response = Encoding.UTF8.GetString(ea.Body.ToArray());
+                    tcs.TrySetResult(response);
+                }
+            };
+            _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
 
-                var props = _channel.CreateBasicProperties();
-                props.CorrelationId = correlationId;
-                props.ReplyTo = replyQueue.QueueName;
+            var props = _channel.CreateBasicProperties();
+            props.CorrelationId = correlationId;
+            props.ReplyTo = replyQueue.QueueName;
 
-                var body = Encoding.UTF8.GetBytes(payload);
-                _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
+            var body = Encoding.UTF8.GetBytes(payload);
+            _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
 
                 // Register timeout cancellation
                 cts.Token.Register(() =>

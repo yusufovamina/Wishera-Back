@@ -25,30 +25,30 @@ namespace user_service.Controllers
 			return userId;
 		}
 
-	[HttpGet("{id}")]
-	public async Task<ActionResult<UserProfileDTO>> GetById(string id)
-	{
-		try
+		[HttpGet("{id}")]
+		public async Task<ActionResult<UserProfileDTO>> GetById(string id)
 		{
-			var currentUserId = GetCurrentUserId() ?? string.Empty;
-			var profile = await _userService.GetUserProfileAsync(id, currentUserId);
-			return Ok(profile);
-		}
-		catch (KeyNotFoundException)
-		{
-			return NotFound(new { message = "User not found" });
-		}
-		catch (ArgumentException ex)
-		{
-			return BadRequest(new { message = ex.Message });
-		}
+			try
+			{
+				var currentUserId = GetCurrentUserId() ?? string.Empty;
+				var profile = await _userService.GetUserProfileAsync(id, currentUserId);
+				return Ok(profile);
+			}
+			catch (KeyNotFoundException)
+			{
+				return NotFound(new { message = "User not found" });
+			}
+			catch (ArgumentException ex)
+			{
+				return BadRequest(new { message = ex.Message });
+			}
 		catch (Exception ex)
 		{
 			Console.WriteLine($"GetById error: {ex.Message}");
 			Console.WriteLine($"Stack trace: {ex.StackTrace}");
 			return StatusCode(500, new { message = "An error occurred while fetching user profile", error = ex.Message });
 		}
-	}
+		}
 
 		[HttpGet("profile")]
 		public async Task<ActionResult<UserProfileDTO>> GetProfile()

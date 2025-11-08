@@ -167,7 +167,7 @@ namespace user_service.Controllers
 			{
 				return BadRequest(new { message = ex.Message });
 			}
-			catch (Exception ex)
+			catch
 			{
 				// Catch any unexpected exceptions and return a 500 with a generic message
 				return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while searching users." });
@@ -284,7 +284,7 @@ namespace user_service.Controllers
 			{
 				return NotFound(new { message = ex.Message });
 			}
-			catch (Exception ex)
+			catch
 			{
 				return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while getting suggested users." });
 			}

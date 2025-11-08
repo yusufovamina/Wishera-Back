@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using System.Text;
 using user_service.Services;
+using user_service.Middleware;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using WisheraApp.DTO;
@@ -159,9 +160,9 @@ else
 }
 
 // Register exception middleware
-builder.Services.AddSingleton<Middleware.GlobalExceptionMiddleware>();
-builder.Services.AddSingleton<ILogger<Middleware.GlobalExceptionMiddleware>>(sp => 
-    sp.GetRequiredService<ILoggerFactory>().CreateLogger<Middleware.GlobalExceptionMiddleware>());
+builder.Services.AddSingleton<GlobalExceptionMiddleware>();
+builder.Services.AddSingleton<ILogger<GlobalExceptionMiddleware>>(sp => 
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger<GlobalExceptionMiddleware>());
 
 var app = builder.Build();
 
@@ -194,7 +195,7 @@ app.Use(async (context, next) =>
 
 app.UseRouting();
 app.UseCors("Frontend");
-app.UseMiddleware<Middleware.GlobalExceptionMiddleware>();
+app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 

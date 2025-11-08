@@ -26,14 +26,38 @@ services:
         sync: false  # You'll add this manually
       - key: MongoDB__Database
         value: WishlistApp
+      # RabbitMQ Configuration (optional - service will work without it)
+      # Option 1: Use CloudAMQP connection string (recommended)
+      - key: CLOUDAMQP_URL
+        sync: false  # Set this manually: e.g., "amqps://user:pass@host:port/vhost"
+      - key: RABBITMQ_URL
+        sync: false  # Alternative: RABBITMQ_URL (same format as CLOUDAMQP_URL)
+      # Option 2: Use individual environment variables
+      - key: RABBITMQ_HOSTNAME
+        sync: false  # Set this manually: e.g., "coyote.rmq.cloudamqp.com"
+      - key: RABBITMQ_USERNAME
+        sync: false  # Set this manually: your CloudAMQP username
+      - key: RABBITMQ_PASSWORD
+        sync: false  # Set this manually: your CloudAMQP password
+      - key: RABBITMQ_VIRTUALHOST
+        sync: false  # Optional: usually same as username for CloudAMQP
+      - key: RABBITMQ_PORT
+        value: 5672
+      # Option 3: Use configuration format (alternative)
       - key: RabbitMq__HostName
         sync: false
       - key: RabbitMq__UserName
         sync: false
       - key: RabbitMq__Password
         sync: false
+      - key: RabbitMq__VirtualHost
+        sync: false
       - key: RabbitMq__Port
         value: 5672
+      - key: RabbitMq__Exchange
+        value: auth.exchange
+      - key: RabbitMq__Queue
+        value: auth.requests
       - key: Cloudinary__CloudName
         sync: false
       - key: Cloudinary__ApiKey

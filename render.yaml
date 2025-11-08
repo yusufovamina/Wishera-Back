@@ -126,7 +126,7 @@ services:
     name: wishera-app
     env: docker
     dockerfilePath: ./WishlistApp/Dockerfile
-    dockerContext: ./WishlistApp
+    dockerContext: ./
     plan: free
     healthCheckPath: /health
     envVars:

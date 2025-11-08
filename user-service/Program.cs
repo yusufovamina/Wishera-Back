@@ -9,25 +9,14 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using WisheraApp.DTO;
 using WisheraApp.Models;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
-using user_service.Middleware;
-using user_service.Filters;
-using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure port for Render.com - Render provides PORT environment variable
-var port = Environment.GetEnvironmentVariable("PORT");
-if (!string.IsNullOrEmpty(port))
-{
-    // Use + to bind to all interfaces (both IPv4 and IPv6)
-    builder.WebHost.UseUrls($"http://+:{port}");
-}
+// Configure port for Render.com
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5001";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-builder.Services.AddControllers(options =>
-{
-	// Add CORS result filter to ensure headers are always present
-	options.Filters.Add<CorsResultFilter>();
-}).ConfigureApplicationPartManager(pm =>
+builder.Services.AddControllers().ConfigureApplicationPartManager(pm =>
 {
 	pm.ApplicationParts.Clear();
 	pm.ApplicationParts.Add(new AssemblyPart(typeof(Program).Assembly));
@@ -36,12 +25,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {
 	o.DocumentFilter<user_service.SwaggerFilters.IncludeOnlyUsersFilter>();
-});
-
-// Configure request timeout (30 seconds)
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(30);
 });
 
 // CORS for frontend
@@ -56,8 +39,7 @@ builder.Services.AddCors(options =>
 			"http://localhost:19006",     // Expo tunnel
 			"http://127.0.0.1:8081",       // iOS simulator
 			"http://10.0.2.2:8081",       // Android emulator
-			"https://wishera.vercel.app", // Production frontend
-			"https://wishera.vercel.app/" // Production frontend (with trailing slash)
+			"https://wishera.vercel.app"  // Production frontend
 		)
 		.AllowAnyHeader()
 		.AllowAnyMethod()
@@ -65,16 +47,8 @@ builder.Services.AddCors(options =>
 	});
 });
 
-// MongoDB with timeout configuration
-var mongoConnectionString = builder.Configuration.GetConnectionString("MongoDB");
-var mongoSettings = MongoClientSettings.FromConnectionString(mongoConnectionString);
-mongoSettings.ConnectTimeout = TimeSpan.FromSeconds(5); // 5 seconds to establish connection
-mongoSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(5); // 5 seconds to select server
-mongoSettings.SocketTimeout = TimeSpan.FromSeconds(10); // 10 seconds for socket operations
-mongoSettings.MaxConnectionPoolSize = 100;
-mongoSettings.MinConnectionPoolSize = 10;
-
-var mongoClient = new MongoClient(mongoSettings);
+// Mongo
+var mongoClient = new MongoClient(builder.Configuration.GetConnectionString("MongoDB"));
 var database = mongoClient.GetDatabase("WishlistApp");
 builder.Services.AddSingleton(database);
 builder.Services.AddSingleton<MongoDbContext>(sp => new MongoDbContext(database));
@@ -104,49 +78,6 @@ builder.Services
 			ValidateLifetime = true,
 			ClockSkew = TimeSpan.Zero
 		};
-		
-		// Improve error handling for authentication failures
-		options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
-		{
-			OnAuthenticationFailed = context =>
-			{
-				Console.WriteLine($"JWT Authentication failed: {context.Exception.Message}");
-				
-				// Add CORS headers to error response (validate origin)
-				var origin = context.Request.Headers["Origin"].ToString();
-				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app", "https://wishera.vercel.app/" };
-				if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
-				{
-					context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
-					context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
-				}
-				
-				context.NoResult();
-				context.Response.StatusCode = 401;
-				context.Response.ContentType = "application/json";
-				var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication failed. Please log in again." });
-				return context.Response.WriteAsync(result);
-			},
-			OnChallenge = context =>
-			{
-				Console.WriteLine($"JWT Challenge: {context.Error}, {context.ErrorDescription}");
-				
-				// Add CORS headers to error response (validate origin)
-				var origin = context.Request.Headers["Origin"].ToString();
-				var allowedOrigins = new[] { "http://localhost:3000", "http://localhost:8081", "http://localhost:19000", "http://localhost:19006", "http://127.0.0.1:8081", "http://10.0.2.2:8081", "https://wishera.vercel.app", "https://wishera.vercel.app/" };
-				if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
-				{
-					context.Response.Headers.Append("Access-Control-Allow-Origin", origin);
-					context.Response.Headers.Append("Access-Control-Allow-Credentials", "true");
-				}
-				
-				context.HandleResponse();
-				context.Response.StatusCode = 401;
-				context.Response.ContentType = "application/json";
-				var result = System.Text.Json.JsonSerializer.Serialize(new { message = "Authentication required. Please log in." });
-				return context.Response.WriteAsync(result);
-			}
-		};
 	});
 
 // Register core user logic (local services)
@@ -156,29 +87,16 @@ builder.Services.AddScoped<IEventService, EventService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddSingleton<ICacheService, CacheService>();
 
-// Register global exception handling middleware
-builder.Services.AddTransient<GlobalExceptionMiddleware>();
-
 // RabbitMQ RPC server
 builder.Services.AddHostedService<UserRpcServer>();
 
-// Redis distributed cache with improved connection resilience
+// Redis distributed cache
 var redisConnection = builder.Configuration.GetConnectionString("Redis")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__Redis")
     ?? "localhost:6379";
-
-// Configure Redis with timeouts and retry logic
-var redisOptions = ConfigurationOptions.Parse(redisConnection);
-redisOptions.ConnectTimeout = 2000; // 2 seconds to establish connection
-redisOptions.SyncTimeout = 500; // 500ms for synchronous operations
-redisOptions.AsyncTimeout = 500; // 500ms for async operations
-redisOptions.ConnectRetry = 3; // Retry connection 3 times
-redisOptions.AbortOnConnectFail = false; // Don't abort on connection failure, allow retries
-redisOptions.ReconnectRetryPolicy = new ExponentialRetry(100, 500); // Exponential backoff for reconnects
-
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.ConfigurationOptions = redisOptions;
+    options.Configuration = redisConnection;
     options.InstanceName = "wishera:";
 });
 
@@ -190,13 +108,8 @@ if (app.Environment.IsDevelopment())
 	app.UseSwaggerUI();
 }
 
-// Apply CORS early to ensure headers are sent even on errors
 app.UseRouting();
 app.UseCors("Frontend");
-
-// Add global exception handling middleware (must be after CORS but before controllers)
-app.UseMiddleware<GlobalExceptionMiddleware>();
-
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -123,29 +123,46 @@ namespace WisheraApp.Services
         private async Task<string> SendRpcAsync(string routingKey, string payload)
         {
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30 second timeout
 
-            var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
-            var consumer = new EventingBasicConsumer(_channel);
-
-            var correlationId = Guid.NewGuid().ToString();
-            consumer.Received += (model, ea) =>
+            try
             {
-                if (ea.BasicProperties.CorrelationId == correlationId)
+                var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
+                var consumer = new EventingBasicConsumer(_channel);
+
+                var correlationId = Guid.NewGuid().ToString();
+                consumer.Received += (model, ea) =>
                 {
-                    var response = Encoding.UTF8.GetString(ea.Body.ToArray());
-                    tcs.TrySetResult(response);
-                }
-            };
-            _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
+                    if (ea.BasicProperties.CorrelationId == correlationId)
+                    {
+                        var response = Encoding.UTF8.GetString(ea.Body.ToArray());
+                        tcs.TrySetResult(response);
+                    }
+                };
+                _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
 
-            var props = _channel.CreateBasicProperties();
-            props.CorrelationId = correlationId;
-            props.ReplyTo = replyQueue.QueueName;
+                var props = _channel.CreateBasicProperties();
+                props.CorrelationId = correlationId;
+                props.ReplyTo = replyQueue.QueueName;
 
-            var body = Encoding.UTF8.GetBytes(payload);
-            _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
+                var body = Encoding.UTF8.GetBytes(payload);
+                _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
 
-            return await tcs.Task;
+                // Register timeout cancellation
+                cts.Token.Register(() =>
+                {
+                    if (!tcs.Task.IsCompleted)
+                    {
+                        tcs.TrySetException(new TimeoutException($"RPC call to '{routingKey}' timed out after 30 seconds. The user-service may not be running or RabbitMQ is not configured correctly."));
+                    }
+                });
+
+                return await tcs.Task.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+            {
+                throw new TimeoutException($"RPC call to '{routingKey}' timed out after 30 seconds. The user-service may not be running or RabbitMQ is not configured correctly.");
+            }
         }
 
         public void Dispose()

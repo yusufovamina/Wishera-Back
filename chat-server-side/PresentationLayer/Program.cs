@@ -75,6 +75,13 @@ builder.Services.AddCors(c =>
         .AllowAnyMethod()
         .AllowAnyHeader()
         .AllowCredentials());
+	
+	c.AddPolicy("AllowVercel", policy =>
+	{
+		policy.WithOrigins("https://wishera.vercel.app")
+			.AllowAnyHeader()
+			.AllowAnyMethod();
+	});
 });
 
 

@@ -28,7 +28,7 @@ namespace WisheraApp.Services
         string[] GetCategories();
 
         // Gift operations
-        Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, string? userId, IFormFile? imageFile);
+        Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, IFormFile? imageFile);
         Task<object> UpdateGiftAsync(string id, GiftUpdateDto giftDto);
         Task<object> DeleteGiftAsync(string id);
         Task<object> ReserveGiftAsync(string id, string userId, string username);
@@ -191,9 +191,9 @@ namespace WisheraApp.Services
         }
 
         // Gift operations
-        public async Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, string? userId, IFormFile? imageFile)
+        public async Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, IFormFile? imageFile)
         {
-            var payload = JsonSerializer.Serialize(new { Name = name, Price = price, Category = category, WishlistId = wishlistId, UserId = userId, ImageFile = imageFile });
+            var payload = JsonSerializer.Serialize(new { Name = name, Price = price, Category = category, WishlistId = wishlistId, ImageFile = imageFile });
             var response = await SendRpcAsync("gift.create", payload);
             return JsonSerializer.Deserialize<object>(response)!;
         }
@@ -264,7 +264,7 @@ namespace WisheraApp.Services
 
         public async Task<object> AssignGiftToWishlistAsync(string id, string wishlistId, string userId)
         {
-            var payload = JsonSerializer.Serialize(new { GiftId = id, WishlistId = wishlistId, UserId = userId });
+            var payload = JsonSerializer.Serialize(new { GiftId = id, WishlistId = wishlistId });
             var response = await SendRpcAsync("gift.assignToWishlist", payload);
             return JsonSerializer.Deserialize<object>(response)!;
         }
@@ -279,29 +279,46 @@ namespace WisheraApp.Services
         private async Task<string> SendRpcAsync(string routingKey, string payload)
         {
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30 second timeout
 
-            var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
-            var consumer = new EventingBasicConsumer(_channel);
-
-            var correlationId = Guid.NewGuid().ToString();
-            consumer.Received += (model, ea) =>
+            try
             {
-                if (ea.BasicProperties.CorrelationId == correlationId)
+                var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
+                var consumer = new EventingBasicConsumer(_channel);
+
+                var correlationId = Guid.NewGuid().ToString();
+                consumer.Received += (model, ea) =>
                 {
-                    var response = Encoding.UTF8.GetString(ea.Body.ToArray());
-                    tcs.TrySetResult(response);
-                }
-            };
-            _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
+                    if (ea.BasicProperties.CorrelationId == correlationId)
+                    {
+                        var response = Encoding.UTF8.GetString(ea.Body.ToArray());
+                        tcs.TrySetResult(response);
+                    }
+                };
+                _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
 
-            var props = _channel.CreateBasicProperties();
-            props.CorrelationId = correlationId;
-            props.ReplyTo = replyQueue.QueueName;
+                var props = _channel.CreateBasicProperties();
+                props.CorrelationId = correlationId;
+                props.ReplyTo = replyQueue.QueueName;
 
-            var body = Encoding.UTF8.GetBytes(payload);
-            _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
+                var body = Encoding.UTF8.GetBytes(payload);
+                _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
 
-            return await tcs.Task;
+                // Register timeout cancellation
+                cts.Token.Register(() =>
+                {
+                    if (!tcs.Task.IsCompleted)
+                    {
+                        tcs.TrySetException(new TimeoutException($"RPC call to '{routingKey}' timed out after 30 seconds. The gift-wishlist-service may not be running or RabbitMQ is not configured correctly."));
+                    }
+                });
+
+                return await tcs.Task.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+            {
+                throw new TimeoutException($"RPC call to '{routingKey}' timed out after 30 seconds. The gift-wishlist-service may not be running or RabbitMQ is not configured correctly.");
+            }
         }
 
         public void Dispose()

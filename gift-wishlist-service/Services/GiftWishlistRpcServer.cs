@@ -1,11 +1,10 @@
-extern alias WishlistApp;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WishlistApp::WisheraApp.DTO;
-using WishlistApp::WisheraApp.Models;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 using MongoDB.Driver;
 
 namespace gift_wishlist_service.Services
@@ -13,7 +12,7 @@ namespace gift_wishlist_service.Services
     public class GiftWishlistRpcServer : IHostedService, IDisposable
     {
         private readonly IConfiguration _configuration;
-        private readonly WishlistApp::WisheraApp.Services.IWishlistService _wishlistService;
+        private readonly WisheraApp.Services.IWishlistService _wishlistService;
         private readonly gift_wishlist_service.Services.ICloudinaryService _cloudinaryService;
         private readonly gift_wishlist_service.Services.MongoDbContext _dbContext;
         private IConnection? _connection;
@@ -25,7 +24,7 @@ namespace gift_wishlist_service.Services
 
         public GiftWishlistRpcServer(
             IConfiguration configuration, 
-            WishlistApp::WisheraApp.Services.IWishlistService wishlistService,
+            WisheraApp.Services.IWishlistService wishlistService,
             gift_wishlist_service.Services.ICloudinaryService cloudinaryService,
             gift_wishlist_service.Services.MongoDbContext dbContext)
         {
@@ -229,8 +228,7 @@ namespace gift_wishlist_service.Services
                         Name = createGiftData.Name,
                         Price = createGiftData.Price,
                         Category = createGiftData.Category,
-                        WishlistId = createGiftData.WishlistId,
-                        UserId = createGiftData.UserId
+                        WishlistId = createGiftData.WishlistId
                     };
                     if (createGiftData.ImageFile != null)
                     {
@@ -290,23 +288,9 @@ namespace gift_wishlist_service.Services
                     Console.WriteLine($"Found {userWishlistsList.Count} wishlists for user {getUserWishlistData.UserId}");
                     Console.WriteLine($"Wishlist IDs: [{string.Join(", ", wishlistIds)}]");
                     
-                    // Return gifts owned by the user (either assigned to their wishlists OR unassigned)
-                    var filter = MongoDB.Driver.Builders<Gift>.Filter.Or(
-                        MongoDB.Driver.Builders<Gift>.Filter.And(
-                            MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.UserId, getUserWishlistData.UserId),
-                            MongoDB.Driver.Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds)
-                        ),
-                        MongoDB.Driver.Builders<Gift>.Filter.And(
-                            MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.UserId, getUserWishlistData.UserId),
-                            MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.WishlistId, (string?)null)
-                        )
-                    );
-                    
-                    // If no wishlists exist, just filter by UserId (including null wishlistId)
-                    if (wishlistIds.Count == 0)
-                    {
-                        filter = MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.UserId, getUserWishlistData.UserId);
-                    }
+                    // Only return gifts that belong to the user's actual wishlists
+                    // Remove the filter for gifts with wishlistId == null to prevent showing orphaned gifts
+                    var filter = MongoDB.Driver.Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds);
                     
                     if (!string.IsNullOrEmpty(getUserWishlistData.Category))
                     {
@@ -358,31 +342,6 @@ namespace gift_wishlist_service.Services
                     var giftToAssign = await _dbContext.Gifts.Find(g => g.Id == assignData.GiftId).FirstOrDefaultAsync();
                     if (giftToAssign == null) throw new KeyNotFoundException("Gift not found");
                     
-                    // Verify the user owns the gift (allow null UserId for backward compatibility with old gifts)
-                    if (!string.IsNullOrEmpty(giftToAssign.UserId) && giftToAssign.UserId != assignData.UserId)
-                    {
-                        throw new UnauthorizedAccessException("You are not authorized to assign this gift.");
-                    }
-                    // If UserId is null (old gift), set it now
-                    if (string.IsNullOrEmpty(giftToAssign.UserId))
-                    {
-                        giftToAssign.UserId = assignData.UserId;
-                    }
-                    
-                    // Verify the user owns the wishlist they're assigning to
-                    if (!string.IsNullOrEmpty(assignData.WishlistId))
-                    {
-                        var targetWishlist = await _dbContext.Wishlists.Find(w => w.Id == assignData.WishlistId).FirstOrDefaultAsync();
-                        if (targetWishlist == null)
-                        {
-                            throw new KeyNotFoundException("Wishlist not found.");
-                        }
-                        if (targetWishlist.UserId != assignData.UserId)
-                        {
-                            throw new UnauthorizedAccessException("You are not authorized to assign gifts to this wishlist.");
-                        }
-                    }
-                    
                     giftToAssign.WishlistId = assignData.WishlistId;
                     await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == assignData.GiftId, giftToAssign);
                     return JsonSerializer.Serialize(new { message = "Gift assigned to wishlist successfully" });
@@ -390,24 +349,6 @@ namespace gift_wishlist_service.Services
                     var removeData = JsonSerializer.Deserialize<GiftActionRequestDTO>(payload)!;
                     var giftToRemove = await _dbContext.Gifts.Find(g => g.Id == removeData.GiftId).FirstOrDefaultAsync();
                     if (giftToRemove == null) throw new KeyNotFoundException("Gift not found");
-                    
-                    // Verify the user owns the wishlist that contains this gift
-                    if (!string.IsNullOrEmpty(giftToRemove.WishlistId))
-                    {
-                        var targetWishlist = await _dbContext.Wishlists.Find(w => w.Id == giftToRemove.WishlistId).FirstOrDefaultAsync();
-                        if (targetWishlist == null || targetWishlist.UserId != removeData.UserId)
-                        {
-                            throw new UnauthorizedAccessException("You are not authorized to remove gifts from this wishlist.");
-                        }
-                    }
-                    else
-                    {
-                        // If gift has no wishlist, verify user owns the gift
-                        if (giftToRemove.UserId != removeData.UserId)
-                        {
-                            throw new UnauthorizedAccessException("You are not authorized to modify this gift.");
-                        }
-                    }
                     
                     giftToRemove.WishlistId = null;
                     await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == removeData.GiftId, giftToRemove);
@@ -510,7 +451,6 @@ namespace gift_wishlist_service.Services
         public decimal Price { get; set; }
         public string Category { get; set; } = string.Empty;
         public string? WishlistId { get; set; }
-        public string? UserId { get; set; }
         public IFormFile? ImageFile { get; set; }
     }
 
@@ -546,6 +486,5 @@ namespace gift_wishlist_service.Services
     {
         public string GiftId { get; set; } = string.Empty;
         public string WishlistId { get; set; } = string.Empty;
-        public string UserId { get; set; } = string.Empty;
     }
 }

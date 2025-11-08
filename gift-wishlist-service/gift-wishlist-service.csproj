@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WishlistApp\WishlistApp.csproj" Aliases="WishlistApp" />
+    <ProjectReference Include="..\WishlistApp\WishlistApp.csproj" />
   </ItemGroup>
 
   <Target Name="ExcludeAppSettingsFromPublish" BeforeTargets="PrepareForPublish">

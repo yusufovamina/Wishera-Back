@@ -37,10 +37,26 @@ namespace user_service.Services
 		{
 			if (!IsValidObjectId(userId)) throw new ArgumentException("Invalid user ID format.");
 			if (!IsValidObjectId(currentUserId)) throw new ArgumentException("Invalid current user ID format.");
-			var cacheKey = $"user:profile:{userId}:{currentUserId}";
-			return await _cache.GetOrSetAsync(cacheKey, async () =>
+			
+			// Build profile directly without cache if cache is slow/unavailable
+			// Cache is optional - don't let it block the request
+			try
 			{
-				var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
+				var cacheKey = $"user:profile:{userId}:{currentUserId}";
+				return await _cache.GetOrSetAsync(cacheKey, async () => await BuildUserProfileAsync(userId, currentUserId), TimeSpan.FromMinutes(5))
+					?? await BuildUserProfileAsync(userId, currentUserId);
+			}
+			catch (Exception cacheEx)
+			{
+				// If cache fails, build profile directly
+				Console.WriteLine($"Cache operation failed, building profile directly: {cacheEx.Message}");
+				return await BuildUserProfileAsync(userId, currentUserId);
+			}
+		}
+
+		private async Task<UserProfileDTO> BuildUserProfileAsync(string userId, string currentUserId)
+		{
+			var user = await _dbContext.Users.Find(u => u.Id == userId).FirstOrDefaultAsync();
 			if (user == null)
 				throw new KeyNotFoundException("User not found");
 
@@ -54,7 +70,7 @@ namespace user_service.Services
 			var followingCount = user.FollowingIds?.Count ?? 0;
 
 			// Determine if the profile should be public
-			bool isProfilePublic = !user.IsPrivate || user.Id == currentUserId || user.AllowedViewerIds.Contains(currentUserId);
+			bool isProfilePublic = !user.IsPrivate || user.Id == currentUserId || (user.AllowedViewerIds != null && user.AllowedViewerIds.Contains(currentUserId));
 
 			var profile = new UserProfileDTO
 			{
@@ -62,8 +78,8 @@ namespace user_service.Services
 				Username = user.Username,
 				Email = user.Email,
 				Bio = isProfilePublic ? user.Bio : null,
-				Interests = isProfilePublic ? user.Interests : new List<string>(),
-				AvatarUrl = user.AvatarUrl,
+				Interests = isProfilePublic ? (user.Interests ?? new List<string>()) : new List<string>(),
+				AvatarUrl = user.AvatarUrl ?? string.Empty,
 				Birthday = isProfilePublic ? user.Birthday : null,
 				CreatedAt = user.CreatedAt,
 				FollowersCount = followersCount,
@@ -72,9 +88,7 @@ namespace user_service.Services
 				IsPrivate = user.IsPrivate,
 				WishlistCount = user.WishlistIds?.Count ?? 0
 			};
-				return profile;
-			}, TimeSpan.FromMinutes(5))
-			?? throw new Exception("Failed to build profile");
+			return profile;
 		}
 
 		public async Task<UserProfileDTO> UpdateUserProfileAsync(string userId, UpdateUserProfileDTO updateDto)

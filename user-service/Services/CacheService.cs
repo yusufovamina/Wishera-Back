@@ -20,8 +20,9 @@ namespace user_service.Services
 
         public async Task<T?> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan ttl)
         {
-            // Use cancellation token with short timeout (500ms) to fail fast
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+            // Use cancellation token with very short timeout (200ms) to fail fast
+            // If cache is slow, skip it and go directly to factory
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
             try
             {
                 var cached = await _cache.GetStringAsync(key, cts.Token);
@@ -36,24 +37,29 @@ namespace user_service.Services
             }
             catch (OperationCanceledException)
             {
-                // Cache read timed out, log and continue to factory
-                _logger.LogWarning("Cache read timed out for key: {Key}", key);
+                // Cache read timed out, skip cache and go directly to factory
+                // Don't log every timeout to avoid log spam
             }
             catch (Exception ex)
             {
-                // If cache read fails, log and continue to factory
-                _logger.LogWarning(ex, "Failed to read from cache for key: {Key}", key);
+                // If cache read fails, skip cache and continue to factory
+                // Only log if it's not a timeout/connection issue
+                if (!(ex is TimeoutException || ex.Message.Contains("timeout") || ex.Message.Contains("UnableToConnect")))
+                {
+                    _logger.LogWarning(ex, "Failed to read from cache for key: {Key}", key);
+                }
             }
 
-            // Execute factory to get the value
-            try
-            {
-                var value = await factory();
+            // Execute factory to get the value (this is the important part)
+            var value = await factory();
 
-                // Try to cache the value (fire and forget with short timeout)
+            // Try to cache the value asynchronously (fire and forget - don't wait for it)
+            // Use Task.Run to avoid blocking the response
+            _ = Task.Run(async () =>
+            {
                 try
                 {
-                    using var writeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+                    using var writeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
                     var json = JsonSerializer.Serialize(value);
                     var options = new DistributedCacheEntryOptions
                     {
@@ -61,25 +67,13 @@ namespace user_service.Services
                     };
                     await _cache.SetStringAsync(key, json, options, writeCts.Token);
                 }
-                catch (OperationCanceledException)
+                catch
                 {
-                    // Cache write timed out, log but don't fail the request
-                    _logger.LogWarning("Cache write timed out for key: {Key}", key);
+                    // Silently ignore cache write failures - caching is optional
                 }
-                catch (Exception ex)
-                {
-                    // If cache write fails, log but don't fail the request
-                    _logger.LogWarning(ex, "Failed to write to cache for key: {Key}", key);
-                }
+            });
 
-                return value;
-            }
-            catch (Exception ex)
-            {
-                // If factory fails, log and rethrow so the caller can handle it
-                _logger.LogError(ex, "Factory method failed for cache key: {Key}", key);
-                throw;
-            }
+            return value;
         }
 
         public async Task RemoveAsync(string key)

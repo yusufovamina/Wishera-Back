@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,11 +17,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Forwarded Headers - Required for detecting HTTPS when behind a proxy (like Render.com)
-builder.Services.Configure<Microsoft.AspNetCore.HttpOverrides.ForwardedHeadersOptions>(options =>
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto | 
-                               Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost |
-                               Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor;
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | 
+                               ForwardedHeaders.XForwardedHost |
+                               ForwardedHeaders.XForwardedFor;
     // Clear known networks and proxies to allow any proxy
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();

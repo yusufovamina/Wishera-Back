@@ -19,7 +19,6 @@ namespace auth_service.Controllers
     public class ExternalAuthController : ControllerBase
     {
         private readonly IAuthService _authService;
-        private static readonly Dictionary<string, string> GoogleStateToCodeVerifier = new();
 
         public ExternalAuthController(IAuthService authService)
         {
@@ -94,15 +93,13 @@ namespace auth_service.Controllers
                     Console.WriteLine($"[OAuth Login] Storing frontend origin: {frontendOrigin}");
                 }
                 
-                // Store code verifier with base state, and frontend origin separately
-                lock (GoogleStateToCodeVerifier) 
-                { 
-                    GoogleStateToCodeVerifier[state] = codeVerifier;
-                    if (frontendOrigin != null)
-                    {
-                        // Store origin separately keyed by GUID
-                        GoogleStateToCodeVerifier[$"origin_{stateGuid}"] = frontendOrigin;
-                    }
+                // Store code verifier and frontend origin using shared OAuthStateManager
+                // This ensures state is accessible across controllers
+                OAuthStateManager.StoreCodeVerifier(state, codeVerifier);
+                if (frontendOrigin != null)
+                {
+                    // Store origin separately keyed by GUID
+                    OAuthStateManager.StoreOrigin(stateGuid, frontendOrigin);
                 }
 
                 // Get redirect URI - use explicit config if available, otherwise construct from request
@@ -151,37 +148,28 @@ namespace auth_service.Controllers
         [HttpGet("callback/{provider}")]
         public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state, string provider)
         {
-            string codeVerifier;
-            string? storedOrigin = null;
-            
             // State from Google should be just the base state (e.g., google_web_xxx)
             // But handle case where Google might have added something
             var stateBase = state.Split('|')[0]; // Get base state in case Google modified it
             
-            lock (GoogleStateToCodeVerifier)
+            // Use shared OAuthStateManager to retrieve code verifier (works across controllers)
+            var codeVerifier = OAuthStateManager.TryGetAndRemoveCodeVerifier(stateBase);
+            if (string.IsNullOrEmpty(codeVerifier))
             {
-                if (!GoogleStateToCodeVerifier.TryGetValue(stateBase, out codeVerifier))
+                return BadRequest(new { message = "Invalid state" });
+            }
+            
+            // Extract state GUID to look up stored origin
+            // State format: google_web_xxx or google_mobile_xxx
+            string? storedOrigin = null;
+            var stateGuidParts = stateBase.Split('_');
+            if (stateGuidParts.Length >= 3)
+            {
+                var stateGuid = stateGuidParts[2];
+                // Try to retrieve stored origin (only for web clients)
+                if (!stateBase.StartsWith("google_mobile_"))
                 {
-                    return BadRequest(new { message = "Invalid state" });
-                }
-                
-                GoogleStateToCodeVerifier.Remove(stateBase);
-                
-                // Extract state GUID to look up stored origin
-                // State format: google_web_xxx or google_mobile_xxx
-                var stateGuidParts = stateBase.Split('_');
-                if (stateGuidParts.Length >= 3)
-                {
-                    var stateGuid = stateGuidParts[2];
-                    // Try to retrieve stored origin (only for web clients)
-                    if (!stateBase.StartsWith("google_mobile_"))
-                    {
-                        if (GoogleStateToCodeVerifier.TryGetValue($"origin_{stateGuid}", out var origin) && origin != null)
-                        {
-                            storedOrigin = origin;
-                            GoogleStateToCodeVerifier.Remove($"origin_{stateGuid}");
-                        }
-                    }
+                    storedOrigin = OAuthStateManager.TryGetAndRemoveOrigin(stateGuid);
                 }
             }
 

@@ -40,6 +40,12 @@ builder.Services.AddSingleton<IGiftWishlistServiceClient, GiftWishlistServiceCli
 // Register Chat Integration Service
 builder.Services.AddHttpClient<IChatIntegrationService, ChatIntegrationService>();
 
+// Register HttpClient for proxy requests to user-service
+builder.Services.AddHttpClient("UserService", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 // Configure Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

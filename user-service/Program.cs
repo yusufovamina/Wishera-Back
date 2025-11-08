@@ -90,15 +90,74 @@ builder.Services.AddSingleton<ICacheService, CacheService>();
 // RabbitMQ RPC server
 builder.Services.AddHostedService<UserRpcServer>();
 
-// Redis distributed cache
+// Redis distributed cache (optional - service will work without it)
 var redisConnection = builder.Configuration.GetConnectionString("Redis")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__Redis")
-    ?? "localhost:6379";
-builder.Services.AddStackExchangeRedisCache(options =>
+    ?? null;
+
+if (!string.IsNullOrEmpty(redisConnection))
 {
-    options.Configuration = redisConnection;
-    options.InstanceName = "wishera:";
-});
+    try
+    {
+        // Fix Upstash Redis connection string format
+        var connectionString = redisConnection;
+        
+        // Remove duplicate port if present (some connection strings have :6379:6379)
+        if (connectionString.Contains(":6379:6379"))
+        {
+            connectionString = connectionString.Replace(":6379:6379", ":6379");
+        }
+        
+        // For Upstash Redis, convert redis:// to rediss:// for TLS
+        // Upstash requires TLS by default
+        if (connectionString.StartsWith("redis://") && connectionString.Contains("upstash.io"))
+        {
+            connectionString = connectionString.Replace("redis://", "rediss://");
+        }
+        
+        // Parse the connection string and configure options
+        var configOptions = StackExchange.Redis.ConfigurationOptions.Parse(connectionString);
+        configOptions.AbortOnConnectFail = false; // Don't fail service if Redis is unavailable
+        configOptions.ConnectTimeout = 10000; // 10 seconds timeout (increased for Upstash)
+        configOptions.SyncTimeout = 10000;
+        configOptions.AsyncTimeout = 10000;
+        
+        // For Upstash, ensure SSL is enabled
+        if (connectionString.Contains("upstash.io"))
+        {
+            configOptions.Ssl = true;
+        }
+        
+        // Use the configured options
+        builder.Services.AddStackExchangeRedisCache(options =>
+        {
+            options.ConfigurationOptions = configOptions;
+            options.InstanceName = "wishera:";
+        });
+        
+        Console.WriteLine("Redis cache configured successfully.");
+    }
+    catch (Exception ex)
+    {
+        // Log error but don't fail service startup if Redis config is invalid
+        Console.WriteLine($"Warning: Failed to configure Redis cache: {ex.Message}");
+        Console.WriteLine($"Stack trace: {ex.StackTrace}");
+        Console.WriteLine("Service will continue without Redis caching (using in-memory cache).");
+        // Use in-memory cache as fallback
+        builder.Services.AddDistributedMemoryCache();
+    }
+}
+else
+{
+    // No Redis connection string provided, use in-memory cache as fallback
+    Console.WriteLine("No Redis connection string provided. Using in-memory cache.");
+    builder.Services.AddDistributedMemoryCache();
+}
+
+// Register exception middleware
+builder.Services.AddSingleton<Middleware.GlobalExceptionMiddleware>();
+builder.Services.AddSingleton<ILogger<Middleware.GlobalExceptionMiddleware>>(sp => 
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger<Middleware.GlobalExceptionMiddleware>());
 
 var app = builder.Build();
 
@@ -108,8 +167,30 @@ if (app.Environment.IsDevelopment())
 	app.UseSwaggerUI();
 }
 
+// Handle OPTIONS requests for CORS preflight
+app.Use(async (context, next) =>
+{
+    if (context.Request.Method == "OPTIONS")
+    {
+        var origin = context.Request.Headers["Origin"].ToString();
+        if (!string.IsNullOrEmpty(origin))
+        {
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+            context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
+            context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+            context.Response.Headers["Access-Control-Max-Age"] = "3600";
+        }
+        context.Response.StatusCode = 200;
+        await context.Response.WriteAsync(string.Empty);
+        return;
+    }
+    await next();
+});
+
 app.UseRouting();
 app.UseCors("Frontend");
+app.UseMiddleware<Middleware.GlobalExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 

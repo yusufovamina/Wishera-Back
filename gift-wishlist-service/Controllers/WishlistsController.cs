@@ -10,6 +10,7 @@ namespace gift_wishlist_service.Controllers
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
+    [Route("api/wishlists")] // Add lowercase route for compatibility
     public class WishlistsController : ControllerBase
     {
         private readonly WishlistApp::WisheraApp.Services.IWishlistService _wishlistService;

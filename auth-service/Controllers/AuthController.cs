@@ -220,7 +220,13 @@ namespace auth_service.Controllers
                 var state = $"google_{clientTypeState}_{Guid.NewGuid():N}";
                 lock (GoogleStateToCodeVerifier) { GoogleStateToCodeVerifier[state] = codeVerifier; }
 
-                var backendCallback = new Uri(new Uri(apiOrigin), "/signin-google").ToString();
+                // Get redirect URI - use explicit config if available, otherwise construct from request
+                var explicitRedirectUri = cfg["Authentication:Google:RedirectUri"];
+                var backendCallback = !string.IsNullOrWhiteSpace(explicitRedirectUri)
+                    ? explicitRedirectUri
+                    : new Uri(new Uri(apiOrigin), "/signin-google").ToString();
+                
+                Console.WriteLine($"[OAuth Login] Using redirect URI: {backendCallback}");
                 var url = QueryHelpers.AddQueryString(
                     "https://accounts.google.com/o/oauth2/v2/auth",
                     new Dictionary<string, string?>
@@ -307,10 +313,16 @@ namespace auth_service.Controllers
                 frontendComplete = $"{frontendBase}/oauth-complete";
             }
             
+            // Get redirect URI - use explicit config if available, otherwise construct from request
+            var explicitRedirectUri = config["Authentication:Google:RedirectUri"];
             var backendAuthority = $"{Request.Scheme}://{Request.Host}";
             var backendCallback = provider.Equals("Google", StringComparison.OrdinalIgnoreCase)
-                ? new Uri(new Uri(backendAuthority), "/signin-google").ToString()
+                ? (!string.IsNullOrWhiteSpace(explicitRedirectUri)
+                    ? explicitRedirectUri
+                    : new Uri(new Uri(backendAuthority), "/signin-google").ToString())
                 : new Uri(new Uri(backendAuthority), "/signin-twitter").ToString();
+            
+            Console.WriteLine($"[OAuth Callback] Using redirect URI: {backendCallback}");
 
             string email = string.Empty;
             string name = "user";

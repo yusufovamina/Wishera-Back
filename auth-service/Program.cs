@@ -15,6 +15,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Forwarded Headers - Required for detecting HTTPS when behind a proxy (like Render.com)
+builder.Services.Configure<Microsoft.AspNetCore.HttpOverrides.ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto | 
+                               Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedHost |
+                               Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor;
+    // Clear known networks and proxies to allow any proxy
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 // CORS
 const string CorsPolicyName = "DevCors";
 builder.Services.AddCors(options =>
@@ -93,6 +104,10 @@ builder.Services
 builder.Services.AddHostedService<AuthRpcServer>();
 
 var app = builder.Build();
+
+// Use forwarded headers middleware BEFORE other middleware
+// This allows the app to correctly detect HTTPS when behind a proxy (like Render.com)
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())
 {

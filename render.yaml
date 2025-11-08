@@ -16,6 +16,8 @@ services:
         value: http://+:5219
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
+      - key: Authentication__Google__RedirectUri
+        value: https://wishera-auth-service.onrender.com/signin-google
       - key: Jwt__Key
         generateValue: true
       - key: Jwt__Issuer

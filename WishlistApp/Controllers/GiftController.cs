@@ -121,9 +121,16 @@ namespace WisheraApp.Controllers
                 var reservedGifts = await _giftWishlistServiceClient.GetReservedGiftsAsync(userId);
                 return Ok(reservedGifts);
             }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"GetReservedGifts timeout: {ex.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable. The gift-wishlist-service may not be running or RabbitMQ is not configured correctly.", error = ex.Message });
+            }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                Console.WriteLine($"GetReservedGifts error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(502, new { message = "Unable to fetch reserved gifts. Please try again later.", error = ex.Message });
             }
         }
 
@@ -140,9 +147,16 @@ namespace WisheraApp.Controllers
                 var reservedGifts = await _giftWishlistServiceClient.GetReservedGiftsAsync(userId);
                 return Ok(reservedGifts);
             }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"GetReservedGifts timeout: {ex.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable. The gift-wishlist-service may not be running or RabbitMQ is not configured correctly.", error = ex.Message });
+            }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                Console.WriteLine($"GetReservedGifts error: {ex.Message}");
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(502, new { message = "Unable to fetch reserved gifts. Please try again later.", error = ex.Message });
             }
         }
 

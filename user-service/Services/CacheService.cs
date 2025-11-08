@@ -18,60 +18,135 @@ namespace user_service.Services
             _logger = logger;
         }
 
+        private static bool _redisAvailable = true;
+        private static DateTime _lastRedisFailure = DateTime.MinValue;
+        private static readonly TimeSpan _redisCircuitBreakerTimeout = TimeSpan.FromMinutes(5); // Skip Redis for 5 minutes after failure
+        private static int _consecutiveFailures = 0;
+        private static readonly int _maxFailuresBeforeCircuitBreak = 2;
+
         public async Task<T?> GetOrSetAsync<T>(string key, Func<Task<T>> factory, TimeSpan ttl)
         {
-            // Use cancellation token with very short timeout (200ms) to fail fast
-            // If cache is slow, skip it and go directly to factory
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+            // Circuit breaker: If Redis has failed recently, skip it entirely
+            if (!_redisAvailable)
+            {
+                var timeSinceLastFailure = DateTime.UtcNow - _lastRedisFailure;
+                if (timeSinceLastFailure < _redisCircuitBreakerTimeout)
+                {
+                    // Skip cache completely, go directly to factory
+                    return await factory();
+                }
+                else
+                {
+                    // Enough time has passed, reset circuit breaker and try again
+                    _redisAvailable = true;
+                    _consecutiveFailures = 0;
+                }
+            }
+
+            // Try to get from cache with very short timeout (50ms max wait)
+            // Use Task.Run with timeout to ensure we don't wait longer than 50ms
+            var cacheTask = Task.Run(async () =>
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+                    return await _cache.GetStringAsync(key, cts.Token);
+                }
+                catch
+                {
+                    return null; // Return null on any error
+                }
+            });
+
+            // Wait for cache with timeout - don't wait more than 50ms
+            string? cached = null;
             try
             {
-                var cached = await _cache.GetStringAsync(key, cts.Token);
-                if (!string.IsNullOrEmpty(cached))
+                var completedTask = await Task.WhenAny(cacheTask, Task.Delay(50));
+                if (completedTask == cacheTask)
+                {
+                    cached = await cacheTask;
+                }
+            }
+            catch
+            {
+                // Ignore any errors
+            }
+
+            // If we got a cached value, use it
+            if (!string.IsNullOrEmpty(cached))
+            {
+                try
                 {
                     var deserialized = JsonSerializer.Deserialize<T>(cached);
                     if (deserialized != null)
                     {
+                        // Redis is working - reset failure counter
+                        _redisAvailable = true;
+                        _consecutiveFailures = 0;
                         return deserialized;
                     }
                 }
-            }
-            catch (OperationCanceledException)
-            {
-                // Cache read timed out, skip cache and go directly to factory
-                // Don't log every timeout to avoid log spam
-            }
-            catch (Exception ex)
-            {
-                // If cache read fails, skip cache and continue to factory
-                // Only log if it's not a timeout/connection issue
-                if (!(ex is TimeoutException || ex.Message.Contains("timeout") || ex.Message.Contains("UnableToConnect")))
+                catch
                 {
-                    _logger.LogWarning(ex, "Failed to read from cache for key: {Key}", key);
+                    // Deserialization failed, continue to factory
                 }
+            }
+
+            // Check if cache operation failed (timeout or error)
+            // If cache didn't return quickly, mark as failure
+            if (cached == null && _redisAvailable)
+            {
+                _consecutiveFailures++;
+                if (_consecutiveFailures >= _maxFailuresBeforeCircuitBreak)
+                {
+                    _redisAvailable = false;
+                    _lastRedisFailure = DateTime.UtcNow;
+                    _consecutiveFailures = 0;
+                }
+            }
+            else if (cached != null)
+            {
+                // Cache returned (even if empty), reset failures
+                _consecutiveFailures = 0;
             }
 
             // Execute factory to get the value (this is the important part)
+            // Always execute factory, even if cache failed
             var value = await factory();
 
             // Try to cache the value asynchronously (fire and forget - don't wait for it)
-            // Use Task.Run to avoid blocking the response
-            _ = Task.Run(async () =>
+            // Only try if Redis circuit breaker is open (available)
+            if (_redisAvailable)
             {
-                try
+                _ = Task.Run(async () =>
                 {
-                    using var writeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
-                    var json = JsonSerializer.Serialize(value);
-                    var options = new DistributedCacheEntryOptions
+                    try
                     {
-                        AbsoluteExpirationRelativeToNow = ttl
-                    };
-                    await _cache.SetStringAsync(key, json, options, writeCts.Token);
-                }
-                catch
-                {
-                    // Silently ignore cache write failures - caching is optional
-                }
-            });
+                        using var writeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+                        var json = JsonSerializer.Serialize(value);
+                        var options = new DistributedCacheEntryOptions
+                        {
+                            AbsoluteExpirationRelativeToNow = ttl
+                        };
+                        await _cache.SetStringAsync(key, json, options, writeCts.Token);
+                        // If write succeeds, reset failures
+                        _consecutiveFailures = 0;
+                    }
+                    catch
+                    {
+                        // Silently ignore cache write failures
+                        // Increment failure counter
+                        _consecutiveFailures++;
+                        if (_consecutiveFailures >= _maxFailuresBeforeCircuitBreak)
+                        {
+                            _redisAvailable = false;
+                            _lastRedisFailure = DateTime.UtcNow;
+                            _consecutiveFailures = 0;
+                        }
+                    }
+                });
+            }
 
             return value;
         }

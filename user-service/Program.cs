@@ -118,14 +118,17 @@ if (!string.IsNullOrEmpty(redisConnection))
         // Parse the connection string and configure options
         var configOptions = StackExchange.Redis.ConfigurationOptions.Parse(connectionString);
         configOptions.AbortOnConnectFail = false; // Don't fail service if Redis is unavailable
-        configOptions.ConnectTimeout = 10000; // 10 seconds timeout (increased for Upstash)
-        configOptions.SyncTimeout = 10000;
-        configOptions.AsyncTimeout = 10000;
+        configOptions.ConnectTimeout = 2000; // 2 seconds timeout (reduced to fail faster)
+        configOptions.SyncTimeout = 2000;
+        configOptions.AsyncTimeout = 2000;
+        configOptions.ConnectRetry = 0; // Don't retry connections - fail fast
+        configOptions.ReconnectRetryPolicy = null; // Don't auto-reconnect
         
         // For Upstash, ensure SSL is enabled
         if (connectionString.Contains("upstash.io"))
         {
             configOptions.Ssl = true;
+            configOptions.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13;
         }
         
         // Use the configured options
@@ -135,7 +138,8 @@ if (!string.IsNullOrEmpty(redisConnection))
             options.InstanceName = "wishera:";
         });
         
-        Console.WriteLine("Redis cache configured successfully.");
+        Console.WriteLine($"Redis cache configured with connection string: {connectionString.Substring(0, Math.Min(50, connectionString.Length))}...");
+        Console.WriteLine("Note: Redis is optional - service will work without it if connection fails.");
     }
     catch (Exception ex)
     {

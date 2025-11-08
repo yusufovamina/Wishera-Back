@@ -275,10 +275,64 @@ namespace WisheraApp.Controllers
                 var users = await _userServiceClient.SearchUsersAsync(query, currentUserId, page, pageSize);
                 return Ok(users);
             }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"SearchUsers timeout, trying HTTP fallback: {ex.Message}");
+                return await TryHttpSearchFallback(query, page, pageSize, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"SearchUsers RabbitMQ not available, trying HTTP fallback: {ex.Message}");
+                return await TryHttpSearchFallback(query, page, pageSize, ex.Message);
+            }
             catch (ArgumentException ex)
             {
                 return BadRequest(new { message = ex.Message });
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"SearchUsers error, trying HTTP fallback: {ex.Message}");
+                return await TryHttpSearchFallback(query, page, pageSize, ex.Message);
+            }
+        }
+        
+        private async Task<ActionResult<List<UserSearchDTO>>> TryHttpSearchFallback(string query, int page, int pageSize, string originalError)
+        {
+            try
+            {
+                return await SearchUsersViaHttpAsync(query, page, pageSize);
+            }
+            catch (Exception httpEx)
+            {
+                Console.WriteLine($"HTTP fallback failed: {httpEx.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable.", error = httpEx.Message, originalError = originalError });
+            }
+        }
+        
+        private async Task<ActionResult<List<UserSearchDTO>>> SearchUsersViaHttpAsync(string query, int page, int pageSize)
+        {
+            var userServiceUrl = Environment.GetEnvironmentVariable("USER_SERVICE_URL")
+                ?? _configuration["UserServiceUrl"]
+                ?? "https://wishera-user-service.onrender.com";
+
+            var token = GetAuthToken();
+            var httpClient = _httpClientFactory.CreateClient("UserService");
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{userServiceUrl}/api/Users/search?query={Uri.EscapeDataString(query)}&page={page}&pageSize={pageSize}");
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            var response = await httpClient.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                return StatusCode((int)response.StatusCode, new { message = $"Error from user-service: {response.ReasonPhrase}", details = errorContent });
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var users = System.Text.Json.JsonSerializer.Deserialize<List<UserSearchDTO>>(content, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return Ok(users);
         }
 
         [HttpGet("{id}/followers")]
@@ -297,6 +351,16 @@ namespace WisheraApp.Controllers
                 var followers = await _userServiceClient.GetFollowersAsync(id, currentUserId, page, pageSize);
                 return Ok(followers);
             }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"GetFollowers timeout, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFollowersFallback(id, page, pageSize, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"GetFollowers RabbitMQ not available, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFollowersFallback(id, page, pageSize, ex.Message);
+            }
             catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "User not found" });
@@ -305,6 +369,55 @@ namespace WisheraApp.Controllers
             {
                 return BadRequest(new { message = ex.Message });
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetFollowers error, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFollowersFallback(id, page, pageSize, ex.Message);
+            }
+        }
+        
+        private async Task<ActionResult<List<UserSearchDTO>>> TryHttpFollowersFallback(string userId, int page, int pageSize, string originalError)
+        {
+            try
+            {
+                return await GetFollowersViaHttpAsync(userId, page, pageSize);
+            }
+            catch (Exception httpEx)
+            {
+                Console.WriteLine($"HTTP fallback failed: {httpEx.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable.", error = httpEx.Message, originalError = originalError });
+            }
+        }
+        
+        private async Task<ActionResult<List<UserSearchDTO>>> GetFollowersViaHttpAsync(string userId, int page, int pageSize)
+        {
+            var userServiceUrl = Environment.GetEnvironmentVariable("USER_SERVICE_URL")
+                ?? _configuration["UserServiceUrl"]
+                ?? "https://wishera-user-service.onrender.com";
+
+            var token = GetAuthToken();
+            var httpClient = _httpClientFactory.CreateClient("UserService");
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{userServiceUrl}/api/Users/{userId}/followers?page={page}&pageSize={pageSize}");
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            var response = await httpClient.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                return StatusCode((int)response.StatusCode, new { message = $"Error from user-service: {response.ReasonPhrase}", details = errorContent });
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var followers = System.Text.Json.JsonSerializer.Deserialize<List<UserSearchDTO>>(content, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return Ok(followers);
         }
 
         [HttpGet("{id}/following")]
@@ -323,6 +436,16 @@ namespace WisheraApp.Controllers
                 var following = await _userServiceClient.GetFollowingAsync(id, currentUserId, page, pageSize);
                 return Ok(following);
             }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"GetFollowing timeout, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFollowingFallback(id, page, pageSize, ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"GetFollowing RabbitMQ not available, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFollowingFallback(id, page, pageSize, ex.Message);
+            }
             catch (KeyNotFoundException)
             {
                 return NotFound(new { message = "User not found" });
@@ -331,6 +454,55 @@ namespace WisheraApp.Controllers
             {
                 return BadRequest(new { message = ex.Message });
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetFollowing error, trying HTTP fallback: {ex.Message}");
+                return await TryHttpFollowingFallback(id, page, pageSize, ex.Message);
+            }
+        }
+        
+        private async Task<ActionResult<List<UserSearchDTO>>> TryHttpFollowingFallback(string userId, int page, int pageSize, string originalError)
+        {
+            try
+            {
+                return await GetFollowingViaHttpAsync(userId, page, pageSize);
+            }
+            catch (Exception httpEx)
+            {
+                Console.WriteLine($"HTTP fallback failed: {httpEx.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable.", error = httpEx.Message, originalError = originalError });
+            }
+        }
+        
+        private async Task<ActionResult<List<UserSearchDTO>>> GetFollowingViaHttpAsync(string userId, int page, int pageSize)
+        {
+            var userServiceUrl = Environment.GetEnvironmentVariable("USER_SERVICE_URL")
+                ?? _configuration["UserServiceUrl"]
+                ?? "https://wishera-user-service.onrender.com";
+
+            var token = GetAuthToken();
+            var httpClient = _httpClientFactory.CreateClient("UserService");
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{userServiceUrl}/api/Users/{userId}/following?page={page}&pageSize={pageSize}");
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            var response = await httpClient.SendAsync(request);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return NotFound(new { message = "User not found" });
+            }
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                return StatusCode((int)response.StatusCode, new { message = $"Error from user-service: {response.ReasonPhrase}", details = errorContent });
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var following = System.Text.Json.JsonSerializer.Deserialize<List<UserSearchDTO>>(content, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return Ok(following);
         }
     }
 } 

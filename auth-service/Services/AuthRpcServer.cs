@@ -28,6 +28,7 @@ namespace auth_service.Services
             try
             {
                 ConnectionFactory factory;
+                string hostName = "unknown";
                 
                 // Check if CloudAMQP connection string is provided (format: amqps://user:pass@host:port/vhost)
                 var cloudAmqpUrl = Environment.GetEnvironmentVariable("CLOUDAMQP_URL") 
@@ -40,9 +41,11 @@ namespace auth_service.Services
                     Console.WriteLine($"[AuthRpcServer] Using CloudAMQP connection string from environment variable");
                     try
                     {
+                        var uri = new Uri(cloudAmqpUrl);
+                        hostName = uri.Host;
                         factory = new ConnectionFactory
                         {
-                            Uri = new Uri(cloudAmqpUrl)
+                            Uri = uri
                         };
                         Console.WriteLine($"[AuthRpcServer] Parsed connection string successfully");
                     }
@@ -55,7 +58,7 @@ namespace auth_service.Services
                 else
                 {
                     // Support individual environment variables for Render.com/CloudAMQP
-                    var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
+                    hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
                         ?? _configuration["RabbitMq:HostName"] 
                         ?? "localhost";
                     var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 

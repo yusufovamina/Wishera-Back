@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Linq;
 
 namespace WisheraApp.Middleware
 {
@@ -9,12 +10,15 @@ namespace WisheraApp.Middleware
         private static readonly string[] AllowedOrigins = new[]
         {
             "http://localhost:3000",
+            "http://localhost:3001",
             "http://localhost:8081",
             "http://localhost:19000",
             "http://localhost:19006",
+            "http://127.0.0.1:3000",
             "http://127.0.0.1:8081",
             "http://10.0.2.2:8081",
-            "https://wishera.vercel.app"
+            "https://wishera.vercel.app",
+            "https://wishera.vercel.app/"
         };
 
         public GlobalExceptionMiddleware(ILogger<GlobalExceptionMiddleware> logger)
@@ -63,23 +67,44 @@ namespace WisheraApp.Middleware
                 statusCode = HttpStatusCode.Unauthorized;
                 message = "Unauthorized access.";
             }
-            else if (exception is TimeoutException)
+            else if (exception is TimeoutException || exception is InvalidOperationException)
             {
                 statusCode = HttpStatusCode.BadGateway;
-                message = "Service temporarily unavailable. Please try again later.";
+                message = exception.Message.Contains("RabbitMQ") || exception.Message.Contains("not available")
+                    ? "Service temporarily unavailable. Please try again later."
+                    : exception.Message;
             }
 
             // Clear any existing response and ensure CORS headers are included
-            context.Response.Clear();
+            if (!context.Response.HasStarted)
+            {
+                context.Response.Clear();
+            }
             
             // Ensure CORS headers are included in error response
             var origin = context.Request.Headers["Origin"].ToString();
-            if (!string.IsNullOrEmpty(origin) && AllowedOrigins.Contains(origin))
+            if (string.IsNullOrEmpty(origin))
+            {
+                // If no origin header, check Referer header
+                var referer = context.Request.Headers["Referer"].ToString();
+                if (!string.IsNullOrEmpty(referer) && referer.Contains("wishera.vercel.app"))
+                {
+                    origin = "https://wishera.vercel.app";
+                }
+            }
+            
+            // Check if origin is allowed (exact match or contains check)
+            bool isAllowed = !string.IsNullOrEmpty(origin) && 
+                (AllowedOrigins.Contains(origin) || 
+                 AllowedOrigins.Any(o => origin.StartsWith(o.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)));
+            
+            if (isAllowed && !context.Response.HasStarted)
             {
                 context.Response.Headers["Access-Control-Allow-Origin"] = origin;
                 context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
-                context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
-                context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+                context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
+                context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+                context.Response.Headers["Access-Control-Expose-Headers"] = "*";
             }
 
             var response = new

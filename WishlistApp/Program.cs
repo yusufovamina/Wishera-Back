@@ -67,6 +67,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
                 
                 // Add CORS headers to authentication challenge responses
+                // Following Vercel CORS guide: all required headers must be present
                 var origin = context.Request.Headers["Origin"].ToString();
                 if (!string.IsNullOrEmpty(origin))
                 {
@@ -82,6 +83,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     {
                         context.Response.Headers["Access-Control-Allow-Origin"] = origin;
                         context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+                        context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
+                        context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
                     }
                 }
                 

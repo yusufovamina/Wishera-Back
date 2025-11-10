@@ -82,10 +82,13 @@ namespace WisheraApp.Filters
             if (isAllowed)
             {
                 // Use the original origin value (not normalized) for the header
+                // Following Vercel CORS guide: https://vercel.com/guides/how-to-enable-cors
+                // All required headers must be present for CORS to work properly
                 context.Response.Headers["Access-Control-Allow-Origin"] = origin;
                 context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
                 context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
                 context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+                // Note: Access-Control-Max-Age is set in the CORS policy (86400 seconds = 24 hours)
             }
         }
     }

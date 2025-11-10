@@ -25,51 +25,73 @@ namespace auth_service.Services
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            // Support environment variables for Render.com/CloudAMQP
-            var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
-                ?? _configuration["RabbitMq:HostName"] 
-                ?? "localhost";
-            var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
-                ?? _configuration["RabbitMq:UserName"] 
-                ?? "guest";
-            var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
-                ?? _configuration["RabbitMq:Password"] 
-                ?? "guest";
-            var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
-                ?? _configuration["RabbitMq:VirtualHost"] 
-                ?? "/";
-            
-            // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
-            if (virtualHost == "/" && userName != "guest")
+            // Check if RabbitMQ is enabled (default to true, but allow disabling for dev)
+            var rabbitMqEnabled = _configuration.GetValue<bool>("RabbitMq:Enabled", true);
+            if (!rabbitMqEnabled)
             {
-                virtualHost = userName;
+                Console.WriteLine("[AuthRpcServer] RabbitMQ is disabled in configuration. RPC server will not start.");
+                return Task.CompletedTask;
             }
 
-            var factory = new ConnectionFactory
+            try
             {
-                HostName = hostName,
-                UserName = userName,
-                Password = password,
-                VirtualHost = virtualHost,
-                Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? _configuration["RabbitMq:Port"], out var port) ? port : 5672
-            };
-            _exchange = _configuration["RabbitMq:Exchange"] ?? _exchange;
-            _queue = _configuration["RabbitMq:Queue"] ?? _queue;
+                // Support environment variables for Render.com/CloudAMQP
+                var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
+                    ?? _configuration["RabbitMq:HostName"] 
+                    ?? "localhost";
+                var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
+                    ?? _configuration["RabbitMq:UserName"] 
+                    ?? "guest";
+                var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
+                    ?? _configuration["RabbitMq:Password"] 
+                    ?? "guest";
+                var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
+                    ?? _configuration["RabbitMq:VirtualHost"] 
+                    ?? "/";
+                
+                // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
+                if (virtualHost == "/" && userName != "guest")
+                {
+                    virtualHost = userName;
+                }
 
-            _connection = factory.CreateConnection();
-            _channel = _connection.CreateModel();
-            _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
-            _channel.QueueDeclare(_queue, durable: true, exclusive: false, autoDelete: false);
-            _channel.QueueBind(_queue, _exchange, routingKey: "auth.register");
-            _channel.QueueBind(_queue, _exchange, routingKey: "auth.login");
-            _channel.QueueBind(_queue, _exchange, routingKey: "auth.checkEmail");
-            _channel.QueueBind(_queue, _exchange, routingKey: "auth.checkUsername");
-            _channel.QueueBind(_queue, _exchange, routingKey: "auth.forgot");
-            _channel.QueueBind(_queue, _exchange, routingKey: "auth.reset");
+                var factory = new ConnectionFactory
+                {
+                    HostName = hostName,
+                    UserName = userName,
+                    Password = password,
+                    VirtualHost = virtualHost,
+                    Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? _configuration["RabbitMq:Port"], out var port) ? port : 5672
+                };
+                _exchange = _configuration["RabbitMq:Exchange"] ?? _exchange;
+                _queue = _configuration["RabbitMq:Queue"] ?? _queue;
 
-            var consumer = new AsyncEventingBasicConsumer(_channel);
-            consumer.Received += OnReceivedAsync;
-            _channel.BasicConsume(queue: _queue, autoAck: false, consumer: consumer);
+                _connection = factory.CreateConnection();
+                _channel = _connection.CreateModel();
+                _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
+                _channel.QueueDeclare(_queue, durable: true, exclusive: false, autoDelete: false);
+                _channel.QueueBind(_queue, _exchange, routingKey: "auth.register");
+                _channel.QueueBind(_queue, _exchange, routingKey: "auth.login");
+                _channel.QueueBind(_queue, _exchange, routingKey: "auth.checkEmail");
+                _channel.QueueBind(_queue, _exchange, routingKey: "auth.checkUsername");
+                _channel.QueueBind(_queue, _exchange, routingKey: "auth.forgot");
+                _channel.QueueBind(_queue, _exchange, routingKey: "auth.reset");
+
+                var consumer = new AsyncEventingBasicConsumer(_channel);
+                consumer.Received += OnReceivedAsync;
+                _channel.BasicConsume(queue: _queue, autoAck: false, consumer: consumer);
+
+                Console.WriteLine($"[AuthRpcServer] Successfully connected to RabbitMQ at {hostName}:{factory.Port}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AuthRpcServer] WARNING: Failed to connect to RabbitMQ: {ex.Message}");
+                Console.WriteLine("[AuthRpcServer] The service will continue without RPC functionality. REST API endpoints will still work.");
+                Console.WriteLine("[AuthRpcServer] To enable RabbitMQ, either:");
+                Console.WriteLine("  1. Install and start RabbitMQ: brew install rabbitmq && brew services start rabbitmq");
+                Console.WriteLine("  2. Set 'RabbitMq:Enabled' to 'false' in appsettings.json to disable RPC server");
+                // Don't throw - allow the service to start without RabbitMQ
+            }
 
             return Task.CompletedTask;
         }

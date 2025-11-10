@@ -236,6 +236,101 @@ app.UseRouting();
 // OPTIONS requests don't have auth tokens, so CORS processes them first
 app.UseCors("AllowAll");
 
+// 3.5. Explicit CORS header enforcement middleware - Ensures CORS headers are ALWAYS present
+// This runs right after CORS middleware to guarantee headers are added even if CORS middleware fails
+app.Use(async (context, next) =>
+{
+    // Store origin for later use
+    var origin = context.Request.Headers["Origin"].ToString();
+    
+    // If no origin, try to extract from Referer (for Render proxy scenarios)
+    if (string.IsNullOrEmpty(origin))
+    {
+        var referer = context.Request.Headers["Referer"].ToString();
+        if (!string.IsNullOrEmpty(referer))
+        {
+            try
+            {
+                var uri = new Uri(referer);
+                origin = $"{uri.Scheme}://{uri.Host}" + (uri.Port != 80 && uri.Port != 443 ? $":{uri.Port}" : "");
+            }
+            catch
+            {
+                // Invalid referer, skip
+            }
+        }
+    }
+    
+    // Store origin in HttpContext.Items for use after response is generated
+    if (!string.IsNullOrEmpty(origin))
+    {
+        context.Items["CorsOrigin"] = origin;
+    }
+    
+    // Define allowed origins
+    var allowedOrigins = new[]
+    {
+        "http://localhost:3000", "http://localhost:3001", "http://localhost:8081",
+        "http://localhost:19000", "http://localhost:19006",
+        "http://127.0.0.1:3000", "http://127.0.0.1:8081",
+        "http://10.0.2.2:8081",
+        "https://wishera.vercel.app", "https://wishera.vercel.app/"
+    };
+    
+    // Check if origin is allowed
+    bool isAllowed = !string.IsNullOrEmpty(origin) && allowedOrigins.Any(o =>
+    {
+        var normalizedOrigin = origin.TrimEnd('/').ToLowerInvariant();
+        var normalizedAllowed = o.TrimEnd('/').ToLowerInvariant();
+        return normalizedOrigin == normalizedAllowed || 
+               normalizedOrigin.StartsWith(normalizedAllowed, StringComparison.OrdinalIgnoreCase);
+    });
+    
+    context.Items["CorsAllowed"] = isAllowed;
+    
+    // Handle OPTIONS preflight requests explicitly
+    if (context.Request.Method == "OPTIONS" && isAllowed)
+    {
+        context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+        context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
+        context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+        context.Response.Headers["Access-Control-Max-Age"] = "86400";
+        context.Response.StatusCode = 200;
+        await context.Response.CompleteAsync();
+        return;
+    }
+    
+    // Continue to next middleware
+    await next();
+    
+    // After response is generated, ensure CORS headers are present if not already added
+    if (isAllowed && context.Items.ContainsKey("CorsOrigin"))
+    {
+        var storedOrigin = context.Items["CorsOrigin"]?.ToString();
+        if (!string.IsNullOrEmpty(storedOrigin))
+        {
+            // Check if headers are already present (from CORS middleware)
+            if (!context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+            {
+                // Try to add headers even if response has started (may not work but worth trying)
+                try
+                {
+                    context.Response.Headers["Access-Control-Allow-Origin"] = storedOrigin;
+                    context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+                    context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH";
+                    context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+                }
+                catch
+                {
+                    // Headers can't be modified after response started
+                    // This is handled by CorsResultFilter instead
+                }
+            }
+        }
+    }
+});
+
 // 4. Authentication & Authorization - After CORS
 // Note: CORS middleware handles OPTIONS requests automatically
 app.UseAuthentication();
@@ -245,7 +340,7 @@ app.UseAuthorization();
 // This ensures error responses (including auth errors) have CORS headers
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
-// 5. Map endpoints
+// 7. Map endpoints
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok("Healthy"));
 

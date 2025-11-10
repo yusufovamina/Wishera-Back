@@ -24,6 +24,7 @@ namespace WisheraApp.Filters
         public void OnResultExecuting(ResultExecutingContext context)
         {
             // Add CORS headers before result is executed
+            // This is critical - headers must be added BEFORE the response body is written
             AddCorsHeaders(context.HttpContext);
         }
 
@@ -38,11 +39,9 @@ namespace WisheraApp.Filters
 
         private void AddCorsHeaders(HttpContext context)
         {
-            if (context.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
-            {
-                return; // Already added by CORS middleware
-            }
-
+            // Always try to add headers, even if CORS middleware might have added them
+            // This ensures headers are present in all cases
+            
             var origin = context.Request.Headers["Origin"].ToString();
             if (string.IsNullOrEmpty(origin))
             {
@@ -59,6 +58,12 @@ namespace WisheraApp.Filters
                     {
                         // Invalid referer, skip
                     }
+                }
+                
+                // Also check HttpContext.Items (set by our middleware)
+                if (string.IsNullOrEmpty(origin) && context.Items.ContainsKey("CorsOrigin"))
+                {
+                    origin = context.Items["CorsOrigin"]?.ToString() ?? string.Empty;
                 }
                 
                 if (string.IsNullOrEmpty(origin))
@@ -79,9 +84,16 @@ namespace WisheraApp.Filters
                        normalizedOrigin.StartsWith(normalizedAllowed, StringComparison.OrdinalIgnoreCase);
             });
 
+            // Also check HttpContext.Items (set by our middleware)
+            if (!isAllowed && context.Items.ContainsKey("CorsAllowed"))
+            {
+                isAllowed = context.Items["CorsAllowed"] is bool allowed && allowed;
+            }
+
             if (isAllowed)
             {
-                // Use the original origin value (not normalized) for the header
+                // ALWAYS set headers, even if they might already be present
+                // This ensures headers are definitely there
                 // Following Vercel CORS guide: https://vercel.com/guides/how-to-enable-cors
                 // All required headers must be present for CORS to work properly
                 context.Response.Headers["Access-Control-Allow-Origin"] = origin;

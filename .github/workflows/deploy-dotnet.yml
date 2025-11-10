@@ -1,0 +1,39 @@
+name: Deploy .NET API
+
+on:
+  push:
+    branches:
+      - main  # Автодеплой при пуше в main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout репозитория
+        uses: actions/checkout@v3
+
+      - name: 🏗️ Устанавливаем .NET SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '7.0'  # Версия .NET
+
+      - name: 📦 Сборка проекта
+        run: |
+          cd backend
+          dotnet restore
+          dotnet build --configuration Release
+
+      - name: 📂 Подготовка к загрузке
+        run: |
+          cd backend
+          zip -r api.zip ./*
+
+      - name: 🚀 Деплой на FreeASPHosting
+        uses: appleboy/scp-action@master
+        with:
+          host: freeasphosting.net  # Измени на свой хостинг
+          username: ${{ secrets.FREEASP_USERNAME }}
+          password: ${{ secrets.FREEASP_PASSWORD }}
+          source: "backend/api.zip"
+          target: "/var/www/html/wishlist-api"

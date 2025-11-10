@@ -1,0 +1,619 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using MongoDB.Driver;
+using System.Collections.Concurrent;
+
+namespace BusinessLayer.Hubs
+{
+    public class ChatHub : Hub
+    {
+        private readonly IHttpContextAccessor httpContextAccessor;
+        private static readonly ConcurrentDictionary<string, string> activeUsers = new();
+
+        public ChatHub(
+            IHttpContextAccessor httpContextAccessor)
+        {
+            this.httpContextAccessor = httpContextAccessor;
+        }
+
+        public async Task SendMessageToAll(string userId, string message)
+        {
+            await Clients.Others.SendAsync("ReceiveMessage", userId, message);
+        }
+
+        public async Task SendMessageToUser(string userId, string message)
+        {
+            var sourceUserId = GetUserIdFromQuery();
+            // Handle special pin/unpin hint messages: broadcast to both participants and DO NOT persist
+            var isPinHint = !string.IsNullOrEmpty(message) && (message.StartsWith("[[pin]]:") || message.StartsWith("[[unpin]]:"));
+            if (isPinHint)
+            {
+                var username = GetUsernameFromQuery();
+                var messageId = Guid.NewGuid().ToString();
+                var sentAt = DateTimeOffset.UtcNow;
+                if (activeUsers.ContainsKey(userId))
+                {
+                    await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
+                }
+                if (!string.IsNullOrEmpty(sourceUserId) && activeUsers.ContainsKey(sourceUserId))
+                {
+                    await Clients.Client(activeUsers[sourceUserId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
+                }
+                return; // Skip persistence for pin/unpin hints
+            }
+            if (activeUsers.ContainsKey(userId))
+            {
+                var username = GetUsernameFromQuery();
+                var messageId = Guid.NewGuid().ToString();
+                var sentAt = DateTimeOffset.UtcNow;
+                await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
+            }
+            // Persist to Mongo if configured
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient != null && configuration != null)
+                {
+                    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                    var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                    var db = mongoClient.GetDatabase(dbName);
+                    var collection = db.GetCollection<dynamic>(collectionName);
+                    var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
+                        ? $"{sourceUserId}:{userId}"
+                        : $"{userId}:{sourceUserId}";
+                    // Do not persist pin/unpin hint messages
+                    if (!isPinHint)
+                    {
+                        await collection.InsertOneAsync(new
+                        {
+                            messageId = Guid.NewGuid().ToString(),
+                            conversationId,
+                            senderUserId = sourceUserId,
+                            recipientUserId = userId,
+                            text = message,
+                            sentAt = DateTimeOffset.UtcNow
+                        });
+                    }
+                }
+            }
+            catch { }
+        }
+
+        public async Task SendMessageToUserWithMeta(string userId, string message, string? replyToMessageId = null, string? clientMessageId = null)
+        {
+            var sourceUserId = GetUserIdFromQuery();
+            var messageId = Guid.NewGuid().ToString();
+            var sentAt = DateTimeOffset.UtcNow;
+            // Handle special pin/unpin hint messages: broadcast to both participants and DO NOT persist
+            var isPinHint = !string.IsNullOrEmpty(message) && (message.StartsWith("[[pin]]:") || message.StartsWith("[[unpin]]:"));
+            if (isPinHint)
+            {
+                var username = GetUsernameFromQuery();
+                if (activeUsers.ContainsKey(userId))
+                {
+                    await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, replyToMessageId, clientMessageId, sentAt }, username);
+                }
+                if (!string.IsNullOrEmpty(sourceUserId) && activeUsers.ContainsKey(sourceUserId))
+                {
+                    await Clients.Client(activeUsers[sourceUserId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, replyToMessageId, clientMessageId, sentAt }, username);
+                }
+                return; // Skip persistence for pin/unpin hints
+            }
+            if (activeUsers.ContainsKey(userId))
+            {
+                var username = GetUsernameFromQuery();
+                await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, replyToMessageId, clientMessageId, sentAt }, username);
+            }
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient != null && configuration != null)
+                {
+                    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                    var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                    var db = mongoClient.GetDatabase(dbName);
+                    var collection = db.GetCollection<dynamic>(collectionName);
+                    var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
+                        ? $"{sourceUserId}:{userId}"
+                        : $"{userId}:{sourceUserId}";
+                    // Do not persist pin/unpin hint messages
+                    if (!isPinHint)
+                    {
+                        await collection.InsertOneAsync(new
+                        {
+                            messageId = messageId,
+                            conversationId,
+                            senderUserId = sourceUserId,
+                            recipientUserId = userId,
+                            text = message,
+                            replyToMessageId = replyToMessageId,
+                            clientMessageId = clientMessageId,
+                            sentAt = sentAt
+                        });
+                    }
+                }
+            }
+            catch { }
+        }
+
+        public async Task SendMessageToUserWithCustomData(string userId, string message, Dictionary<string, object>? customData = null, string? replyToMessageId = null, string? clientMessageId = null)
+        {
+            var sourceUserId = GetUserIdFromQuery();
+            var messageId = clientMessageId ?? Guid.NewGuid().ToString();
+            var sentAt = DateTimeOffset.UtcNow;
+            
+            if (activeUsers.ContainsKey(userId))
+            {
+                var username = GetUsernameFromQuery();
+                await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, customData, replyToMessageId, clientMessageId, sentAt }, username);
+            }
+            
+            // Persist to Mongo if configured
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient != null && configuration != null)
+                {
+                    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                    var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                    var db = mongoClient.GetDatabase(dbName);
+                    var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+                    if (!string.IsNullOrEmpty(sourceUserId) && !string.IsNullOrEmpty(userId))
+                    {
+                        var doc = new MongoDB.Bson.BsonDocument
+                        {
+                            { "messageId", messageId },
+                            { "conversationId", string.Join("_", new[] { sourceUserId, userId }.OrderBy(x => x)) },
+                            { "senderUserId", sourceUserId },
+                            { "recipientUserId", userId },
+                            { "text", message ?? string.Empty },
+                            { "sentAt", MongoDB.Bson.BsonValue.Create(sentAt) },
+                            { "deliveredAt", MongoDB.Bson.BsonNull.Value },
+                            { "readAt", MongoDB.Bson.BsonNull.Value },
+                            { "clientMessageId", clientMessageId ?? string.Empty }
+                        };
+                        
+                        // Add customData if present
+                        if (customData != null && customData.Count > 0)
+                        {
+                            var customDataBson = new MongoDB.Bson.BsonDocument();
+                            foreach (var kvp in customData)
+                            {
+                                customDataBson.Add(kvp.Key, MongoDB.Bson.BsonValue.Create(kvp.Value));
+                            }
+                            doc.Add("customData", customDataBson);
+                        }
+                        
+                        if (!string.IsNullOrEmpty(replyToMessageId))
+                        {
+                            doc.Add("replyToMessageId", replyToMessageId);
+                        }
+                        
+                        await collection.InsertOneAsync(doc);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        public async Task<bool> EditMessage(string messageId, string newText)
+        {
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient == null || configuration == null) return false;
+                var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                var db = mongoClient.GetDatabase(dbName);
+                var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+                var filter = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("messageId", messageId);
+                var update = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Update.Set("text", newText);
+                var result = await collection.UpdateOneAsync(filter, update);
+                if (result.ModifiedCount > 0)
+                {
+                    // Notify participants if online (best effort)
+                    var doc = await collection.Find(filter).FirstOrDefaultAsync();
+                    string? senderId = null;
+                    string? recipientId = null;
+                    if (doc != null)
+                    {
+                        var sVal = doc.GetValue("senderUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!sVal.IsBsonNull) senderId = sVal.AsString;
+                        var rVal = doc.GetValue("recipientUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!rVal.IsBsonNull) recipientId = rVal.AsString;
+                    }
+                    if (!string.IsNullOrEmpty(recipientId) && activeUsers.ContainsKey(recipientId))
+                    {
+                        await Clients.Client(activeUsers[recipientId]).SendAsync("MessageEdited", new { id = messageId, text = newText });
+                    }
+                    if (!string.IsNullOrEmpty(senderId) && activeUsers.ContainsKey(senderId))
+                    {
+                        await Clients.Client(activeUsers[senderId]).SendAsync("MessageEdited", new { id = messageId, text = newText });
+                    }
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        public async Task<bool> DeleteMessage(string messageId)
+        {
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient == null || configuration == null) return false;
+                var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                var db = mongoClient.GetDatabase(dbName);
+                var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+                var filter = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("messageId", messageId);
+                var doc = await collection.Find(filter).FirstOrDefaultAsync();
+                var result = await collection.DeleteOneAsync(filter);
+                if (result.DeletedCount > 0)
+                {
+                    string? senderId = null;
+                    string? recipientId = null;
+                    if (doc != null)
+                    {
+                        var sVal = doc.GetValue("senderUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!sVal.IsBsonNull) senderId = sVal.AsString;
+                        var rVal = doc.GetValue("recipientUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!rVal.IsBsonNull) recipientId = rVal.AsString;
+                    }
+                    if (!string.IsNullOrEmpty(recipientId) && activeUsers.ContainsKey(recipientId))
+                    {
+                        await Clients.Client(activeUsers[recipientId]).SendAsync("MessageDeleted", new { id = messageId });
+                    }
+                    if (!string.IsNullOrEmpty(senderId) && activeUsers.ContainsKey(senderId))
+                    {
+                        await Clients.Client(activeUsers[senderId]).SendAsync("MessageDeleted", new { id = messageId });
+                    }
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        // Typing indicators
+        public async Task StartTyping(string targetUserId)
+        {
+            var sourceUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(sourceUserId)) return;
+            if (activeUsers.ContainsKey(targetUserId))
+            {
+                await Clients.Client(activeUsers[targetUserId]).SendAsync("Typing", new { userId = sourceUserId, isTyping = true });
+            }
+        }
+
+        public async Task StopTyping(string targetUserId)
+        {
+            var sourceUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(targetUserId) || string.IsNullOrEmpty(sourceUserId)) return;
+            if (activeUsers.ContainsKey(targetUserId))
+            {
+                await Clients.Client(activeUsers[targetUserId]).SendAsync("Typing", new { userId = sourceUserId, isTyping = false });
+            }
+        }
+
+        // Reactions
+        public async Task<bool> ReactToMessage(string messageId, string emoji)
+        {
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient == null || configuration == null) return false;
+                var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                var db = mongoClient.GetDatabase(dbName);
+                var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+                var userId = GetUserIdFromQuery();
+                var filter = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("messageId", messageId);
+                var update = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Update.Set($"reactions.{emoji}.{userId}", true);
+                var result = await collection.UpdateOneAsync(filter, update);
+                if (result.ModifiedCount > 0)
+                {
+                    var doc = await collection.Find(filter).FirstOrDefaultAsync();
+                    if (doc != null)
+                    {
+                        string? senderId = null;
+                        string? recipientId = null;
+                        var sVal = doc.GetValue("senderUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!sVal.IsBsonNull) senderId = sVal.AsString;
+                        var rVal = doc.GetValue("recipientUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!rVal.IsBsonNull) recipientId = rVal.AsString;
+                        var payload = new { id = messageId, userId, emoji };
+                        if (!string.IsNullOrEmpty(recipientId) && activeUsers.ContainsKey(recipientId))
+                        {
+                            await Clients.Client(activeUsers[recipientId]).SendAsync("MessageReactionUpdated", payload);
+                        }
+                        if (!string.IsNullOrEmpty(senderId) && activeUsers.ContainsKey(senderId))
+                        {
+                            await Clients.Client(activeUsers[senderId]).SendAsync("MessageReactionUpdated", payload);
+                        }
+                    }
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        public async Task<bool> UnreactToMessage(string messageId, string emoji)
+        {
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient == null || configuration == null) return false;
+                var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                var db = mongoClient.GetDatabase(dbName);
+                var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+                var userId = GetUserIdFromQuery();
+                var filter = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("messageId", messageId);
+                var update = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Update.Unset($"reactions.{emoji}.{userId}");
+                var result = await collection.UpdateOneAsync(filter, update);
+                if (result.ModifiedCount > 0)
+                {
+                    var doc = await collection.Find(filter).FirstOrDefaultAsync();
+                    if (doc != null)
+                    {
+                        string? senderId = null;
+                        string? recipientId = null;
+                        var sVal = doc.GetValue("senderUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!sVal.IsBsonNull) senderId = sVal.AsString;
+                        var rVal = doc.GetValue("recipientUserId", MongoDB.Bson.BsonNull.Value);
+                        if (!rVal.IsBsonNull) recipientId = rVal.AsString;
+                        var payload = new { id = messageId, userId, emoji, removed = true };
+                        if (!string.IsNullOrEmpty(recipientId) && activeUsers.ContainsKey(recipientId))
+                        {
+                            await Clients.Client(activeUsers[recipientId]).SendAsync("MessageReactionUpdated", payload);
+                        }
+                        if (!string.IsNullOrEmpty(senderId) && activeUsers.ContainsKey(senderId))
+                        {
+                            await Clients.Client(activeUsers[senderId]).SendAsync("MessageReactionUpdated", payload);
+                        }
+                    }
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        public async Task<int> MarkMessagesRead(string peerUserId, IEnumerable<string> messageIds)
+        {
+            try
+            {
+                var httpContext = httpContextAccessor.HttpContext;
+                var services = httpContext?.RequestServices;
+                var mongoClient = services?.GetService(typeof(MongoDB.Driver.IMongoClient)) as MongoDB.Driver.IMongoClient;
+                var configuration = services?.GetService(typeof(IConfiguration)) as IConfiguration;
+                if (mongoClient == null || configuration == null) return 0;
+                var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                var db = mongoClient.GetDatabase(dbName);
+                var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+                var userId = GetUserIdFromQuery();
+                var filter = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.And(
+                    MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("recipientUserId", userId),
+                    MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("senderUserId", peerUserId),
+                    MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.In("messageId", messageIds.ToArray())
+                );
+                var update = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Update.Set("readAt", DateTimeOffset.UtcNow);
+                var result = await collection.UpdateManyAsync(filter, update);
+                var count = (int)result.ModifiedCount;
+                if (count > 0)
+                {
+                    if (activeUsers.ContainsKey(peerUserId))
+                    {
+                        await Clients.Client(activeUsers[peerUserId]).SendAsync("MessagesRead", new { byUserId = userId, messageIds = messageIds.ToArray() });
+                    }
+                    if (activeUsers.ContainsKey(userId))
+                    {
+                        await Clients.Client(activeUsers[userId]).SendAsync("MessagesRead", new { byUserId = userId, messageIds = messageIds.ToArray() });
+                    }
+                }
+                return count;
+            }
+            catch { }
+            return 0;
+        }
+
+        public async Task AddUser(string userId, string connectionId)
+        {
+            // Upsert connection id (thread-safe)
+            activeUsers.AddOrUpdate(userId, connectionId, (_, __) => connectionId);
+            await Clients.All.SendAsync("receiveactiveusers", GetActiveUserIds());
+        }
+
+        public string GetConnectionId()
+        {
+            return Context.ConnectionId;
+        }
+
+        public List<string> GetActiveUserIds()
+        {
+            // Enumerate a snapshot to avoid concurrent modification issues
+            return activeUsers.Keys.ToArray().ToList();
+        }
+
+        public override async Task OnConnectedAsync()
+        {
+            await Clients.All.SendAsync("receiveactiveusers", GetActiveUserIds());
+            await base.OnConnectedAsync();
+        }
+
+        public override async Task OnDisconnectedAsync(Exception? exception)
+        {
+            var connectionId = GetConnectionId();
+            foreach (var kv in activeUsers.ToArray())
+            {
+                if (kv.Value == connectionId)
+                {
+                    activeUsers.TryRemove(kv.Key, out _);
+                }
+            }
+            await Clients.All.SendAsync("receiveactiveusers", GetActiveUserIds());
+            await base.OnDisconnectedAsync(exception);
+        }
+
+        private string GetUserIdFromQuery()
+        {
+            var httpContext = httpContextAccessor.HttpContext;
+            var userIdString = httpContext?.Request?.Query["userId"].ToString();
+            return string.IsNullOrWhiteSpace(userIdString) ? string.Empty : userIdString;
+        }
+
+        private string? GetUsernameFromQuery()
+        {
+            var httpContext = httpContextAccessor.HttpContext;
+            return httpContext?.Request?.Query["username"].ToString();
+        }
+
+        // Call signaling methods
+        [HubMethodName("InitiateCall")]
+        public async Task InitiateCall(string calleeUserId, string callType, string callId)
+        {
+            var callerUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var finalCallId = callId;
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callType, // "audio" or "video"
+                callId = finalCallId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callinitiated", payload);
+            }
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callinitiated", payload);
+            }
+        }
+
+        [HubMethodName("AcceptCall")]
+        public async Task AcceptCall(string callerUserId, string callId)
+        {
+            var calleeUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callaccepted", payload);
+            }
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callaccepted", payload);
+            }
+        }
+
+        [HubMethodName("RejectCall")]
+        public async Task RejectCall(string callerUserId, string callId)
+        {
+            var calleeUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
+            
+            var payload = new { 
+                callerUserId, 
+                calleeUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(callerUserId))
+            {
+                await Clients.Client(activeUsers[callerUserId]).SendAsync("callrejected", payload);
+            }
+            if (activeUsers.ContainsKey(calleeUserId))
+            {
+                await Clients.Client(activeUsers[calleeUserId]).SendAsync("callrejected", payload);
+            }
+        }
+
+        [HubMethodName("EndCall")]
+        public async Task EndCall(string otherUserId, string callId)
+        {
+            var currentUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
+            
+            var payload = new { 
+                callerUserId = currentUserId, 
+                calleeUserId = otherUserId, 
+                callId,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to both participants if they're online
+            if (activeUsers.ContainsKey(otherUserId))
+            {
+                await Clients.Client(activeUsers[otherUserId]).SendAsync("callended", payload);
+            }
+            if (activeUsers.ContainsKey(currentUserId))
+            {
+                await Clients.Client(activeUsers[currentUserId]).SendAsync("callended", payload);
+            }
+        }
+
+        [HubMethodName("SendCallSignal")]
+        public async Task SendCallSignal(string otherUserId, string callId, string signalType, object signalData)
+        {
+            var currentUserId = GetUserIdFromQuery();
+            if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
+            
+            var payload = new { 
+                callerUserId = currentUserId, 
+                calleeUserId = otherUserId, 
+                callId,
+                signalType, // "offer", "answer", "ice-candidate"
+                signalData,
+                timestamp = DateTimeOffset.UtcNow
+            };
+
+            // Send to the other participant if they're online
+            if (activeUsers.ContainsKey(otherUserId))
+            {
+                await Clients.Client(activeUsers[otherUserId]).SendAsync("callsignal", payload);
+            }
+        }
+    }
+}

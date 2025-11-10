@@ -1,0 +1,75 @@
+### Wallpaper API Tests
+### Test the custom wallpaper upload and management functionality
+
+### 1. Get all wallpapers (default + custom for user)
+GET http://localhost:5000/api/chat/wallpapers?userId=test-user-123
+Content-Type: application/json
+
+### 2. Upload a custom wallpaper
+POST http://localhost:5000/api/chat/upload-wallpaper
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="custom-wallpaper.jpg"
+Content-Type: image/jpeg
+
+< ./test-wallpaper.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="userId"
+
+test-user-123
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="name"
+
+My Custom Wallpaper
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="description"
+
+A beautiful custom wallpaper for my chat
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="category"
+
+custom
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="supportsDark"
+
+true
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="supportsLight"
+
+true
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### 3. Get custom wallpapers for a specific user
+GET http://localhost:5000/api/chat/custom-wallpapers?userId=test-user-123
+Content-Type: application/json
+
+### 4. Set wallpaper preference (using custom wallpaper)
+POST http://localhost:5000/api/chat/preferences/wallpaper
+Content-Type: application/json
+
+{
+  "me": "user1",
+  "peer": "user2",
+  "wallpaperId": "custom_12345-67890-abcdef",
+  "opacity": 0.3
+}
+
+### 5. Get wallpaper preference
+GET http://localhost:5000/api/chat/preferences/wallpaper?me=user1&peer=user2
+Content-Type: application/json
+
+### 6. Delete custom wallpaper (replace with actual wallpaper ID from upload response)
+DELETE http://localhost:5000/api/chat/custom-wallpapers/custom_12345-67890-abcdef?userId=test-user-123
+Content-Type: application/json
+
+### 7. Test with default wallpaper
+POST http://localhost:5000/api/chat/preferences/wallpaper
+Content-Type: application/json
+
+{
+  "me": "user1",
+  "peer": "user2",
+  "wallpaperId": "abstract-aurora",
+  "opacity": 0.25
+}

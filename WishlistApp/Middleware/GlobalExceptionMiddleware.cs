@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using System.Text.Json;
 using System.Linq;
@@ -82,21 +83,42 @@ namespace WisheraApp.Middleware
             }
             
             // Ensure CORS headers are included in error response
+            // Render proxy: Try to get origin from Origin header first, then Referer as fallback
             var origin = context.Request.Headers["Origin"].ToString();
             if (string.IsNullOrEmpty(origin))
             {
-                // If no origin header, check Referer header
+                // Render proxy: If no Origin header, try to extract from Referer header
                 var referer = context.Request.Headers["Referer"].ToString();
-                if (!string.IsNullOrEmpty(referer) && referer.Contains("wishera.vercel.app"))
+                if (!string.IsNullOrEmpty(referer))
                 {
-                    origin = "https://wishera.vercel.app";
+                    try
+                    {
+                        var uri = new Uri(referer);
+                        origin = $"{uri.Scheme}://{uri.Host}" + (uri.Port != 80 && uri.Port != 443 ? $":{uri.Port}" : "");
+                    }
+                    catch
+                    {
+                        // Invalid referer, try simple string match as fallback
+                        if (referer.Contains("wishera.vercel.app"))
+                        {
+                            origin = "https://wishera.vercel.app";
+                        }
+                    }
                 }
             }
             
-            // Check if origin is allowed (exact match or contains check)
-            bool isAllowed = !string.IsNullOrEmpty(origin) && 
-                (AllowedOrigins.Contains(origin) || 
-                 AllowedOrigins.Any(o => origin.StartsWith(o.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)));
+            // Check if origin is allowed (normalized comparison for Render proxy compatibility)
+            bool isAllowed = false;
+            if (!string.IsNullOrEmpty(origin))
+            {
+                var normalizedOrigin = origin.TrimEnd('/').ToLowerInvariant();
+                isAllowed = AllowedOrigins.Any(o => 
+                {
+                    var normalizedAllowed = o.TrimEnd('/').ToLowerInvariant();
+                    return normalizedOrigin == normalizedAllowed || 
+                           normalizedOrigin.StartsWith(normalizedAllowed, StringComparison.OrdinalIgnoreCase);
+                });
+            }
             
             if (isAllowed && !context.Response.HasStarted)
             {

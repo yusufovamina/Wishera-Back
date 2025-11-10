@@ -14,21 +14,29 @@ var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 // Add services to the container
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+{
+    // Add CORS result filter to ensure CORS headers are always present
+    options.Filters.Add<WisheraApp.Filters.CorsResultFilter>();
+})
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = null; // Keep original property names
     });
 
 // Forwarded Headers - Required for detecting HTTPS when behind a proxy (like Render.com)
+// Render.com uses a reverse proxy, so we need to trust all forwarded headers
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | 
                                ForwardedHeaders.XForwardedHost |
-                               ForwardedHeaders.XForwardedFor;
-    // Clear known networks and proxies to allow any proxy
+                               ForwardedHeaders.XForwardedFor |
+                               ForwardedHeaders.XForwardedPrefix;
+    // Clear known networks and proxies to allow Render's proxy
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
+    // Require header values to be present (Render always provides them)
+    options.RequireHeaderSymmetry = false;
 });
 
 // API gateway does not use local Mongo or Cloudinary; those are in microservices
@@ -153,6 +161,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // Configure CORS - Must be configured before authentication
+// Render.com proxy passes through the original Origin header, so we can validate it normally
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -174,6 +183,31 @@ builder.Services.AddCors(options =>
         .AllowCredentials()               // Allow credentials (cookies, authorization headers)
         .SetPreflightMaxAge(TimeSpan.FromSeconds(86400)); // Cache preflight for 24 hours
     });
+    
+    // Add a more permissive policy for Render proxy scenarios (fallback)
+    options.AddPolicy("RenderProxy", policy =>
+    {
+        policy.SetIsOriginAllowed(origin =>
+        {
+            // Allow if origin matches our allowed list (case-insensitive, with/without trailing slash)
+            var normalizedOrigin = origin.TrimEnd('/').ToLowerInvariant();
+            var allowedOrigins = new[]
+            {
+                "http://localhost:3000", "http://localhost:3001", "http://localhost:8081",
+                "http://localhost:19000", "http://localhost:19006",
+                "http://127.0.0.1:3000", "http://127.0.0.1:8081",
+                "http://10.0.2.2:8081",
+                "https://wishera.vercel.app"
+            };
+            
+            return allowedOrigins.Any(allowed => 
+                normalizedOrigin == allowed.ToLowerInvariant() ||
+                normalizedOrigin.StartsWith(allowed.ToLowerInvariant()));
+        })
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials();
+    });
 });
 
 var app = builder.Build();
@@ -185,14 +219,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// CRITICAL: Middleware order matters for CORS!
-// 1. Forwarded Headers - Must be first to detect HTTPS behind proxy
+// CRITICAL: Middleware order matters for CORS and Render proxy!
+// 1. Forwarded Headers - MUST be FIRST to detect HTTPS and correct origin when behind Render's proxy
+// This must be before any other middleware that reads Request.Scheme or Request.Host
 app.UseForwardedHeaders();
 
 // 2. Routing - Must be before CORS to determine the endpoint
 app.UseRouting();
 
 // 3. CORS - Must be AFTER Routing but BEFORE Authentication/Authorization
+// Render's proxy passes through the original Origin header, so CORS validation works normally
 // This allows CORS middleware to handle OPTIONS preflight requests
 // OPTIONS requests don't have auth tokens, so CORS processes them first
 app.UseCors("AllowAll");

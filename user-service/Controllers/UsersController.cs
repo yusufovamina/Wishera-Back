@@ -8,8 +8,7 @@ namespace user_service.Controllers
 {
 	[ApiController]
 	[Authorize]
-	[Route("api/[controller]")]
-	[Route("api/users")] // Add lowercase route for compatibility
+	[Route("api/users")] // Use explicit lowercase route only (no [controller] to avoid duplicates)
 	public class UsersController : ControllerBase
 	{
 		private readonly IUserService _userService;

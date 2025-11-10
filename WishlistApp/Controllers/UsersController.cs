@@ -8,8 +8,7 @@ namespace WisheraApp.Controllers
 {
     [Authorize]
     [ApiController]
-    [Route("api/[controller]")]
-    [Route("api/users")] // Add lowercase route for compatibility
+    [Route("api/users")] // Use explicit lowercase route only
     public class UsersController : ControllerBase
     {
         private readonly IUserServiceClient _userServiceClient;

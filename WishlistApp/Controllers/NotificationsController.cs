@@ -7,8 +7,7 @@ namespace WisheraApp.Controllers
 {
     [Authorize]
     [ApiController]
-    [Route("api/[controller]")]
-    [Route("api/notifications")] // Add lowercase route for compatibility
+    [Route("api/notifications")] // Use explicit lowercase route only
     public class NotificationsController : ControllerBase
     {
         private readonly IUserServiceClient _userServiceClient;

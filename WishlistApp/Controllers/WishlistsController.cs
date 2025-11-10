@@ -9,8 +9,7 @@ namespace WisheraApp.Controllers
 {
     [Authorize]
     [ApiController]
-    [Route("api/[controller]")]
-    [Route("api/wishlists")] // Add lowercase route for compatibility
+    [Route("api/wishlists")] // Use explicit lowercase route only
     public class WishlistsController : ControllerBase
     {
         private readonly IGiftWishlistServiceClient _giftWishlistServiceClient;

@@ -9,7 +9,9 @@ namespace auth_service.Services
     {
         Task SendWelcomeEmailAsync(string email, string username);
         Task SendPasswordResetEmailAsync(string email, string token, string username);
+        Task SendPasswordResetCodeAsync(string email, string code, string username);
         Task SendEmailVerificationAsync(string email, string token, string username);
+        Task SendLoginConfirmationCodeAsync(string email, string code, string username);
     }
 
     public class EmailService : IEmailService
@@ -150,6 +152,33 @@ namespace auth_service.Services
             await SendEmailAsync(email, subject, htmlBody, textBody);
         }
 
+        public async Task SendPasswordResetCodeAsync(string email, string code, string username)
+        {
+            var subject = "Reset Your Wishera Password";
+            var htmlBody = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+                    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                        <h1 style='color: #6366f1;'>Password Reset Request</h1>
+                        <p>Hi {username},</p>
+                        <p>We received a request to reset your password. Use the code below to reset it:</p>
+                        <div style='text-align: center; margin: 30px 0;'>
+                            <div style='background-color: #6366f1; color: white; padding: 20px; border-radius: 10px; display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 8px;'>
+                                {code}
+                            </div>
+                        </div>
+                        <p>This code will expire in 15 minutes.</p>
+                        <p>If you didn't request this, please ignore this email.</p>
+                        <p>Best regards,<br>The Wishera Team</p>
+                    </div>
+                </body>
+                </html>
+            ";
+            var textBody = $"Hi {username},\n\nWe received a request to reset your password.\n\nYour reset code is: {code}\n\nThis code will expire in 15 minutes.\n\nIf you didn't request this, please ignore this email.\n\nBest regards,\nThe Wishera Team";
+
+            await SendEmailAsync(email, subject, htmlBody, textBody);
+        }
+
         public async Task SendEmailVerificationAsync(string email, string token, string username)
         {
             var frontendUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:3000";
@@ -176,6 +205,33 @@ namespace auth_service.Services
                 </html>
             ";
             var textBody = $"Hi {username},\n\nThank you for registering with Wishera!\n\nPlease verify your email address by clicking this link: {verificationLink}\n\nThis verification link will expire in 7 days.\n\nIf you didn't create an account with Wishera, please ignore this email.\n\nBest regards,\nThe Wishera Team";
+
+            await SendEmailAsync(email, subject, htmlBody, textBody);
+        }
+
+        public async Task SendLoginConfirmationCodeAsync(string email, string code, string username)
+        {
+            var subject = "Sign In Confirmation Code";
+            var htmlBody = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+                    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                        <h1 style='color: #6366f1;'>Sign In Confirmation</h1>
+                        <p>Hi {username},</p>
+                        <p>We received a sign in request for your account. Use the code below to complete your sign in:</p>
+                        <div style='text-align: center; margin: 30px 0;'>
+                            <div style='background-color: #6366f1; color: white; padding: 20px; border-radius: 10px; display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 8px;'>
+                                {code}
+                            </div>
+                        </div>
+                        <p>This code will expire in 15 minutes.</p>
+                        <p>If you didn't attempt to sign in, please ignore this email and consider changing your password.</p>
+                        <p>Best regards,<br>The Wishera Team</p>
+                    </div>
+                </body>
+                </html>
+            ";
+            var textBody = $"Hi {username},\n\nWe received a sign in request for your account.\n\nYour sign in confirmation code is: {code}\n\nThis code will expire in 15 minutes.\n\nIf you didn't attempt to sign in, please ignore this email and consider changing your password.\n\nBest regards,\nThe Wishera Team";
 
             await SendEmailAsync(email, subject, htmlBody, textBody);
         }

@@ -46,6 +46,21 @@ namespace auth_service.Models
         [BsonElement("resetPasswordTokenExpiry")]
         public DateTime? ResetPasswordTokenExpiry { get; set; }
 
+        [BsonElement("resetPasswordCode")]
+        public string? ResetPasswordCode { get; set; }
+        
+        [BsonElement("resetPasswordCodeExpiry")]
+        public DateTime? ResetPasswordCodeExpiry { get; set; }
+
+        [BsonElement("loginConfirmationCode")]
+        public string? LoginConfirmationCode { get; set; }
+        
+        [BsonElement("loginConfirmationCodeExpiry")]
+        public DateTime? LoginConfirmationCodeExpiry { get; set; }
+
+        [BsonElement("hasCompletedFirstLogin")]
+        public bool HasCompletedFirstLogin { get; set; } = false;
+
         // Fields expected by other services (keep defaults so downstream reads are safe)
         [BsonElement("role")]
         public string Role { get; set; } = "user";

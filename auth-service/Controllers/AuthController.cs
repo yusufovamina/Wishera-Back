@@ -63,8 +63,59 @@ namespace auth_service.Controllers
         {
             try
             {
-                await _authService.ForgotPasswordAsync(forgotPasswordDto.Email);
-                return Ok(new { message = "Password reset link sent to your email" });
+                // Check if request is from mobile client
+                var isMobile = Request.Headers.ContainsKey("X-Client-Type") && 
+                              Request.Headers["X-Client-Type"].ToString().Equals("mobile", StringComparison.OrdinalIgnoreCase);
+                
+                await _authService.ForgotPasswordAsync(forgotPasswordDto.Email, isMobile);
+                
+                var message = isMobile 
+                    ? "If an account with this email exists, a password reset code will be sent"
+                    : "Password reset link sent to your email";
+                
+                return Ok(new { message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("verify-reset-code")]
+        public async Task<ActionResult> VerifyResetCode(VerifyResetCodeDTO verifyCodeDto)
+        {
+            try
+            {
+                var token = await _authService.VerifyResetCodeAsync(verifyCodeDto.Email, verifyCodeDto.Code);
+                return Ok(new { token, message = "Code verified successfully" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("verify-login-code")]
+        public async Task<ActionResult<AuthResponseDTO>> VerifyLoginCode(VerifyLoginCodeDTO verifyCodeDto)
+        {
+            try
+            {
+                var response = await _authService.VerifyLoginCodeAsync(verifyCodeDto.Email, verifyCodeDto.Code);
+                return Ok(response);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("resend-login-code")]
+        public async Task<ActionResult> ResendLoginCode([FromBody] ForgotPasswordDTO dto)
+        {
+            try
+            {
+                await _authService.SendLoginConfirmationCodeAsync(dto.Email);
+                return Ok(new { message = "Login confirmation code sent. Please check your inbox." });
             }
             catch (InvalidOperationException ex)
             {

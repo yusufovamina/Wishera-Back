@@ -15,11 +15,14 @@ namespace auth_service.Services
         Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto);
         Task<bool> IsEmailUniqueAsync(string email);
         Task<bool> IsUsernameUniqueAsync(string username);
-        Task ForgotPasswordAsync(string email);
+        Task ForgotPasswordAsync(string email, bool isMobile = false);
+        Task<string> VerifyResetCodeAsync(string email, string code);
         Task ResetPasswordAsync(string token, string newPassword);
         Task VerifyEmailAsync(string token);
         Task ResendVerificationEmailAsync(string email);
         Task DeleteAccountAsync(string userId);
+        Task SendLoginConfirmationCodeAsync(string email);
+        Task<AuthResponseDTO> VerifyLoginCodeAsync(string email, string code);
     }
 
     public class AuthService : IAuthService
@@ -119,9 +122,41 @@ namespace auth_service.Services
             if (!user.IsEmailVerified)
                 throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification link.");
 
+            // For first-time sign-in, require code confirmation
+            if (!user.HasCompletedFirstLogin)
+            {
+                // Generate a 6-digit confirmation code
+                var random = new Random();
+                var confirmationCode = random.Next(100000, 999999).ToString();
+                var codeExpiry = DateTime.UtcNow.AddMinutes(15);
+
+                var update = Builders<User>.Update
+                    .Set(u => u.LoginConfirmationCode, confirmationCode)
+                    .Set(u => u.LoginConfirmationCodeExpiry, codeExpiry);
+
+                await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+                Console.WriteLine($"Generated login confirmation code for user {user.Username} ({user.Email}): {confirmationCode}");
+
+                try
+                {
+                    // Send login confirmation code email
+                    await _emailService.SendLoginConfirmationCodeAsync(user.Email, confirmationCode, user.Username);
+                    Console.WriteLine($"Login confirmation code email sent successfully to {user.Email}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to send login confirmation code email: {ex.Message}");
+                    throw;
+                }
+
+                // Throw exception to indicate code is required
+                throw new InvalidOperationException("LOGIN_CODE_REQUIRED");
+            }
+
             // Update last active timestamp
-            var update = Builders<User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
-            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            var updateLastActive = Builders<User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, updateLastActive);
 
             return await GenerateAuthResponseAsync(user);
         }
@@ -138,35 +173,99 @@ namespace auth_service.Services
             return !await _dbContext.Users.Find(u => u.UsernameNormalized == normalized).AnyAsync();
         }
 
-        public async Task ForgotPasswordAsync(string email)
+        public async Task ForgotPasswordAsync(string email, bool isMobile = false)
         {
-            var user = await _dbContext.Users.Find(u => u.Email == email).FirstOrDefaultAsync();
+            var emailNormalized = email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync();
             if (user == null)
-                throw new InvalidOperationException("If an account with this email exists, a password reset link will be sent");
+                throw new InvalidOperationException("If an account with this email exists, a password reset code will be sent");
 
-            // Generate a secure reset token
+            if (isMobile)
+            {
+                // Generate a 6-digit code for mobile
+                var random = new Random();
+                var resetCode = random.Next(100000, 999999).ToString();
+                var resetCodeExpiry = DateTime.UtcNow.AddMinutes(15);
+
+                var update = Builders<User>.Update
+                    .Set(u => u.ResetPasswordCode, resetCode)
+                    .Set(u => u.ResetPasswordCodeExpiry, resetCodeExpiry)
+                    .Set(u => u.ResetPasswordToken, (string?)null)
+                    .Set(u => u.ResetPasswordTokenExpiry, (DateTime?)null);
+
+                await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+                Console.WriteLine($"Generated reset code for user {user.Username} ({user.Email}): {resetCode}");
+
+                try
+                {
+                    // Send password reset code email
+                    await _emailService.SendPasswordResetCodeAsync(user.Email, resetCode, user.Username);
+                    Console.WriteLine($"Password reset code email sent successfully to {user.Email}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to send password reset code email: {ex.Message}");
+                    throw;
+                }
+            }
+            else
+            {
+                // Generate a secure reset token for web
+                var resetToken = Guid.NewGuid().ToString("N");
+                var resetTokenExpiry = DateTime.UtcNow.AddHours(24);
+
+                var update = Builders<User>.Update
+                    .Set(u => u.ResetPasswordToken, resetToken)
+                    .Set(u => u.ResetPasswordTokenExpiry, resetTokenExpiry)
+                    .Set(u => u.ResetPasswordCode, (string?)null)
+                    .Set(u => u.ResetPasswordCodeExpiry, (DateTime?)null);
+
+                await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+                Console.WriteLine($"Generated reset token for user {user.Username} ({user.Email})");
+
+                try
+                {
+                    // Send password reset email
+                    await _emailService.SendPasswordResetEmailAsync(user.Email, resetToken, user.Username);
+                    Console.WriteLine($"Password reset email sent successfully to {user.Email}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to send password reset email: {ex.Message}");
+                    throw;
+                }
+            }
+        }
+
+        public async Task<string> VerifyResetCodeAsync(string email, string code)
+        {
+            var emailNormalized = email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync();
+            if (user == null)
+                throw new InvalidOperationException("Invalid email or code");
+
+            if (string.IsNullOrEmpty(user.ResetPasswordCode) || user.ResetPasswordCode != code)
+                throw new InvalidOperationException("Invalid reset code");
+
+            if (user.ResetPasswordCodeExpiry == null || user.ResetPasswordCodeExpiry < DateTime.UtcNow)
+                throw new InvalidOperationException("Reset code has expired");
+
+            // Generate a token for password reset (similar to web flow)
             var resetToken = Guid.NewGuid().ToString("N");
             var resetTokenExpiry = DateTime.UtcNow.AddHours(24);
 
+            // Clear the code and set the token
             var update = Builders<User>.Update
+                .Set(u => u.ResetPasswordCode, (string?)null)
+                .Set(u => u.ResetPasswordCodeExpiry, (DateTime?)null)
                 .Set(u => u.ResetPasswordToken, resetToken)
                 .Set(u => u.ResetPasswordTokenExpiry, resetTokenExpiry);
 
             await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
 
-            Console.WriteLine($"Generated reset token for user {user.Username} ({user.Email})");
-
-            try
-            {
-                // Send password reset email
-                await _emailService.SendPasswordResetEmailAsync(user.Email, resetToken, user.Username);
-                Console.WriteLine($"Password reset email sent successfully to {user.Email}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Failed to send password reset email: {ex.Message}");
-                throw;
-            }
+            return resetToken;
         }
 
         public async Task ResetPasswordAsync(string token, string newPassword)
@@ -252,6 +351,64 @@ namespace auth_service.Services
             await _dbContext.Users.DeleteOneAsync(u => u.Id == userId);
 
             Console.WriteLine($"Account deleted for user: {user.Username} ({user.Email})");
+        }
+
+        public async Task SendLoginConfirmationCodeAsync(string email)
+        {
+            var emailNormalized = email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync();
+            if (user == null)
+                throw new InvalidOperationException("Invalid email");
+
+            // Generate a 6-digit confirmation code
+            var random = new Random();
+            var confirmationCode = random.Next(100000, 999999).ToString();
+            var codeExpiry = DateTime.UtcNow.AddMinutes(15);
+
+            var update = Builders<User>.Update
+                .Set(u => u.LoginConfirmationCode, confirmationCode)
+                .Set(u => u.LoginConfirmationCodeExpiry, codeExpiry);
+
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+            Console.WriteLine($"Generated login confirmation code for user {user.Username} ({user.Email}): {confirmationCode}");
+
+            try
+            {
+                // Send login confirmation code email
+                await _emailService.SendLoginConfirmationCodeAsync(user.Email, confirmationCode, user.Username);
+                Console.WriteLine($"Login confirmation code email sent successfully to {user.Email}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to send login confirmation code email: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task<AuthResponseDTO> VerifyLoginCodeAsync(string email, string code)
+        {
+            var emailNormalized = email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync();
+            if (user == null)
+                throw new InvalidOperationException("Invalid email or code");
+
+            if (string.IsNullOrEmpty(user.LoginConfirmationCode) || user.LoginConfirmationCode != code)
+                throw new InvalidOperationException("Invalid confirmation code");
+
+            if (user.LoginConfirmationCodeExpiry == null || user.LoginConfirmationCodeExpiry < DateTime.UtcNow)
+                throw new InvalidOperationException("Confirmation code has expired");
+
+            // Clear the code and mark first login as completed
+            var update = Builders<User>.Update
+                .Set(u => u.LoginConfirmationCode, (string?)null)
+                .Set(u => u.LoginConfirmationCodeExpiry, (DateTime?)null)
+                .Set(u => u.HasCompletedFirstLogin, true)
+                .Set(u => u.LastActive, DateTime.UtcNow);
+
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+            return await GenerateAuthResponseAsync(user);
         }
 
         private async Task<AuthResponseDTO> GenerateAuthResponseAsync(User user)

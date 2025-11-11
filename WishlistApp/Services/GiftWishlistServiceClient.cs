@@ -44,44 +44,96 @@ namespace WisheraApp.Services
 
     public class GiftWishlistServiceClient : IGiftWishlistServiceClient, IDisposable
     {
-        private readonly IConnection _connection;
-        private readonly IModel _channel;
+        private readonly IConnection? _connection;
+        private readonly IModel? _channel;
         private readonly string _exchange;
+        private readonly ILogger<GiftWishlistServiceClient>? _logger;
 
-        public GiftWishlistServiceClient(IConfiguration configuration)
+        public GiftWishlistServiceClient(IConfiguration configuration, ILogger<GiftWishlistServiceClient>? logger = null)
         {
-            // Support environment variables for Render.com/CloudAMQP
-            var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
-                ?? configuration["RabbitMq:HostName"] 
-                ?? "localhost";
-            var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
-                ?? configuration["RabbitMq:UserName"] 
-                ?? "guest";
-            var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
-                ?? configuration["RabbitMq:Password"] 
-                ?? "guest";
-            var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
-                ?? configuration["RabbitMq:VirtualHost"] 
-                ?? "/";
-            
-            // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
-            if (virtualHost == "/" && userName != "guest")
-            {
-                virtualHost = userName;
-            }
-
-            var factory = new ConnectionFactory
-            {
-                HostName = hostName,
-                UserName = userName,
-                Password = password,
-                VirtualHost = virtualHost,
-                Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? configuration["RabbitMq:Port"], out var port) ? port : 5672
-            };
+            _logger = logger;
             _exchange = "giftwishlist.exchange";
-            _connection = factory.CreateConnection();
-            _channel = _connection.CreateModel();
-            _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
+            
+            try
+            {
+                // Support environment variables for Render.com/CloudAMQP
+                var cloudAmqpUrl = Environment.GetEnvironmentVariable("CLOUDAMQP_URL") 
+                    ?? Environment.GetEnvironmentVariable("RABBITMQ_URL")
+                    ?? configuration["RabbitMq:ConnectionString"];
+                
+                ConnectionFactory factory;
+                
+                if (!string.IsNullOrWhiteSpace(cloudAmqpUrl))
+                {
+                    // Parse CloudAMQP URL format: amqps://user:pass@host:port/vhost
+                    Console.WriteLine("[GiftWishlistServiceClient] Using CloudAMQP connection string from environment variable");
+                    try
+                    {
+                        factory = new ConnectionFactory
+                        {
+                            Uri = new Uri(cloudAmqpUrl)
+                        };
+                        Console.WriteLine("[GiftWishlistServiceClient] Parsed connection string successfully");
+                    }
+                    catch (Exception uriEx)
+                    {
+                        Console.WriteLine($"[GiftWishlistServiceClient] Error parsing connection string: {uriEx.Message}");
+                        _logger?.LogWarning(uriEx, "Failed to parse RabbitMQ connection string. Service will continue without RabbitMQ support.");
+                        _connection = null;
+                        _channel = null;
+                        return;
+                    }
+                }
+                else
+                {
+                    var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
+                        ?? configuration["RabbitMq:HostName"] 
+                        ?? "localhost";
+                    var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
+                        ?? configuration["RabbitMq:UserName"] 
+                        ?? "guest";
+                    var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
+                        ?? configuration["RabbitMq:Password"] 
+                        ?? "guest";
+                    var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
+                        ?? configuration["RabbitMq:VirtualHost"] 
+                        ?? "/";
+                    
+                    // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
+                    if (virtualHost == "/" && userName != "guest")
+                    {
+                        virtualHost = userName;
+                    }
+
+                    var port = 5672;
+                    if (int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? configuration["RabbitMq:Port"], out var parsedPort))
+                    {
+                        port = parsedPort;
+                    }
+
+                    factory = new ConnectionFactory
+                    {
+                        HostName = hostName,
+                        UserName = userName,
+                        Password = password,
+                        VirtualHost = virtualHost,
+                        Port = port
+                    };
+                }
+                
+                _connection = factory.CreateConnection();
+                _channel = _connection.CreateModel();
+                _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
+                Console.WriteLine($"[GiftWishlistServiceClient] Successfully connected to RabbitMQ");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GiftWishlistServiceClient] Warning: Failed to connect to RabbitMQ: {ex.Message}");
+                Console.WriteLine($"[GiftWishlistServiceClient] Service will continue without RabbitMQ RPC support. API calls may fail.");
+                _logger?.LogWarning(ex, "Failed to connect to RabbitMQ. Service will continue without RabbitMQ support.");
+                _connection = null;
+                _channel = null;
+            }
         }
 
         // Wishlist operations
@@ -278,31 +330,37 @@ namespace WisheraApp.Services
 
         private async Task<string> SendRpcAsync(string routingKey, string payload)
         {
+            // Check if RabbitMQ is available
+            if (_channel == null || _connection == null || !_connection.IsOpen)
+            {
+                throw new InvalidOperationException($"RabbitMQ is not available. The gift-wishlist-service may not be running or RabbitMQ is not configured correctly. RPC call to '{routingKey}' cannot be executed.");
+            }
+
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30 second timeout
 
             try
             {
-            var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
-            var consumer = new EventingBasicConsumer(_channel);
+                var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
+                var consumer = new EventingBasicConsumer(_channel);
 
-            var correlationId = Guid.NewGuid().ToString();
-            consumer.Received += (model, ea) =>
-            {
-                if (ea.BasicProperties.CorrelationId == correlationId)
+                var correlationId = Guid.NewGuid().ToString();
+                consumer.Received += (model, ea) =>
                 {
-                    var response = Encoding.UTF8.GetString(ea.Body.ToArray());
-                    tcs.TrySetResult(response);
-                }
-            };
-            _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
+                    if (ea.BasicProperties.CorrelationId == correlationId)
+                    {
+                        var response = Encoding.UTF8.GetString(ea.Body.ToArray());
+                        tcs.TrySetResult(response);
+                    }
+                };
+                _channel.BasicConsume(consumer: consumer, queue: replyQueue.QueueName, autoAck: true);
 
-            var props = _channel.CreateBasicProperties();
-            props.CorrelationId = correlationId;
-            props.ReplyTo = replyQueue.QueueName;
+                var props = _channel.CreateBasicProperties();
+                props.CorrelationId = correlationId;
+                props.ReplyTo = replyQueue.QueueName;
 
-            var body = Encoding.UTF8.GetBytes(payload);
-            _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
+                var body = Encoding.UTF8.GetBytes(payload);
+                _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
 
                 // Register timeout cancellation
                 cts.Token.Register(() =>
@@ -319,12 +377,41 @@ namespace WisheraApp.Services
             {
                 throw new TimeoutException($"RPC call to '{routingKey}' timed out after 30 seconds. The gift-wishlist-service may not be running or RabbitMQ is not configured correctly.");
             }
+            catch (Exception ex) when (_channel == null || _connection == null || !_connection.IsOpen)
+            {
+                throw new InvalidOperationException($"RabbitMQ connection lost. RPC call to '{routingKey}' cannot be executed.", ex);
+            }
         }
 
         public void Dispose()
         {
-            _channel?.Dispose();
-            _connection?.Dispose();
+            try
+            {
+                if (_channel != null && _channel.IsOpen)
+                {
+                    _channel.Close();
+                }
+                _channel?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GiftWishlistServiceClient] Error disposing channel: {ex.Message}");
+                _logger?.LogWarning(ex, "Error disposing RabbitMQ channel");
+            }
+
+            try
+            {
+                if (_connection != null && _connection.IsOpen)
+                {
+                    _connection.Close();
+                }
+                _connection?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GiftWishlistServiceClient] Error disposing connection: {ex.Message}");
+                _logger?.LogWarning(ex, "Error disposing RabbitMQ connection");
+            }
         }
     }
 

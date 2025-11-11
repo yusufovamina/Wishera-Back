@@ -1,9 +1,11 @@
 using MongoDB.Driver;
 using auth_service.Services;
+using auth_service.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +16,17 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Forwarded Headers - Required for detecting HTTPS when behind a proxy (like Render.com)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | 
+                               ForwardedHeaders.XForwardedHost |
+                               ForwardedHeaders.XForwardedFor;
+    // Clear known networks and proxies to allow any proxy
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // CORS
 const string CorsPolicyName = "DevCors";
@@ -42,22 +55,40 @@ builder.Services.AddCors(options =>
 	});
 });
 
-// MongoDB
+// MongoDB - Create client but don't fail if connection is temporarily unavailable
 builder.Services.AddSingleton<IMongoClient>(_ =>
 {
-	// Use the same key casing as other services if present
-	var connectionString = builder.Configuration.GetConnectionString("MongoDB")
-		?? builder.Configuration.GetConnectionString("MongoDb")
-		?? "mongodb+srv://yusufovamina:Fh9nz7EKJuPZHViL@cluster.9qjuc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster";
-	return new MongoClient(connectionString);
+	try
+	{
+		// Use the same key casing as other services if present
+		var connectionString = builder.Configuration.GetConnectionString("MongoDB")
+			?? builder.Configuration.GetConnectionString("MongoDb")
+			?? "mongodb+srv://yusufovamina:Fh9nz7EKJuPZHViL@cluster.9qjuc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster";
+		Console.WriteLine($"[MongoDB] Initializing MongoDB client with connection string: {connectionString.Substring(0, Math.Min(50, connectionString.Length))}...");
+		return new MongoClient(connectionString);
+	}
+	catch (Exception ex)
+	{
+		Console.WriteLine($"[MongoDB] Error creating MongoDB client: {ex.Message}");
+		throw; // MongoDB is required, so fail if we can't create the client
+	}
 });
 builder.Services.AddSingleton(provider =>
 {
-	var client = provider.GetRequiredService<IMongoClient>();
-	var dbName = builder.Configuration.GetValue<string>("MongoDB:Database")
-		?? builder.Configuration.GetValue<string>("MongoDb:Database")
-		?? "WishlistApp";
-	return client.GetDatabase(dbName);
+	try
+	{
+		var client = provider.GetRequiredService<IMongoClient>();
+		var dbName = builder.Configuration.GetValue<string>("MongoDB:Database")
+			?? builder.Configuration.GetValue<string>("MongoDb:Database")
+			?? "WishlistApp";
+		Console.WriteLine($"[MongoDB] Using database: {dbName}");
+		return client.GetDatabase(dbName);
+	}
+	catch (Exception ex)
+	{
+		Console.WriteLine($"[MongoDB] Error getting database: {ex.Message}");
+		throw;
+	}
 });
 builder.Services.AddSingleton<MongoDbContext>();
 
@@ -76,13 +107,23 @@ builder.Services
     })
     .AddJwtBearer(options =>
     {
+        var jwtKey = builder.Configuration["Jwt:Key"];
+        if (string.IsNullOrWhiteSpace(jwtKey))
+        {
+            var errorMessage = "JWT key is not configured. Please set the Jwt__Key environment variable or configure it in appsettings.json";
+            Console.WriteLine($"[JWT] ERROR: {errorMessage}");
+            throw new InvalidOperationException(errorMessage);
+        }
+        
+        var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "WisheraApp";
+        Console.WriteLine($"[JWT] JWT authentication configured with issuer: {jwtIssuer}");
+        
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.ASCII.GetBytes(builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured"))),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtKey)),
             ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidIssuer = jwtIssuer,
             ValidateAudience = false,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
@@ -98,7 +139,14 @@ builder.Services
 // RabbitMQ RPC server for Auth
 builder.Services.AddHostedService<AuthRpcServer>();
 
+// Register exception middleware
+builder.Services.AddSingleton<GlobalExceptionMiddleware>();
+
 var app = builder.Build();
+
+// Use forwarded headers middleware BEFORE other middleware
+// This allows the app to correctly detect HTTPS when behind a proxy (like Render.com)
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())
 {
@@ -112,10 +160,29 @@ if (!app.Environment.IsDevelopment())
 	app.UseHttpsRedirection();
 }
 
+app.UseRouting();
+
 // Apply CORS before auth and endpoints
 app.UseCors(CorsPolicyName);
 
-app.MapControllers();
-app.MapGet("/health", () => Results.Ok("Healthy"));
+// Use exception middleware to handle errors gracefully (after CORS, before auth)
+app.UseMiddleware<GlobalExceptionMiddleware>();
 
-app.Run();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
+
+try
+{
+    Console.WriteLine($"Auth Service starting on port {port}");
+    Console.WriteLine($"Environment: {app.Environment.EnvironmentName}");
+    app.Run();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Fatal error starting auth service: {ex.Message}");
+    Console.WriteLine($"Stack trace: {ex.StackTrace}");
+    throw;
+}

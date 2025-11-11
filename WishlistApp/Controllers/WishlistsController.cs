@@ -175,6 +175,11 @@ namespace WisheraApp.Controllers
                 Console.WriteLine($"Feed request timeout: {ex.Message}");
                 return StatusCode(502, new { message = "Service temporarily unavailable. Please try again later." });
             }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"Feed service unavailable: {ex.Message}");
+                return StatusCode(502, new { message = "Service temporarily unavailable. Please try again later." });
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching feed: {ex.Message}");

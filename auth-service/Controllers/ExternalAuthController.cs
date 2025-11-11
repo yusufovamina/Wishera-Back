@@ -20,6 +20,7 @@ namespace auth_service.Controllers
     {
         private readonly IAuthService _authService;
         private static readonly Dictionary<string, string> GoogleStateToCodeVerifier = new();
+        private static readonly Dictionary<string, string> GoogleStateToOrigin = new();
 
         public ExternalAuthController(IAuthService authService)
         {
@@ -46,6 +47,38 @@ namespace auth_service.Controllers
 
                 var state = $"google_{Guid.NewGuid():N}";
                 lock (GoogleStateToCodeVerifier) { GoogleStateToCodeVerifier[state] = codeVerifier; }
+                
+                // Store the origin (Referer or Origin header) for redirect after OAuth
+                var origin = Request.Headers["Referer"].FirstOrDefault() ?? 
+                            Request.Headers["Origin"].FirstOrDefault();
+                
+                // Extract just the origin (scheme + host + port) if full URL provided
+                if (!string.IsNullOrWhiteSpace(origin) && Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+                {
+                    origin = $"{originUri.Scheme}://{originUri.Authority}";
+                }
+                
+                // Fallback to common frontend URLs if no origin header
+                // Check if it's likely Expo (8081) or web (3000)
+                if (string.IsNullOrWhiteSpace(origin))
+                {
+                    // Try to detect from common ports
+                    var userAgent = Request.Headers["User-Agent"].ToString();
+                    if (userAgent.Contains("Expo") || userAgent.Contains("ReactNative"))
+                    {
+                        origin = "http://localhost:8081"; // Expo default
+                    }
+                    else
+                    {
+                        origin = cfg["Frontend:BaseUrl"] ?? "http://localhost:3000"; // Web default
+                    }
+                }
+                
+                Console.WriteLine($"[OAuth Debug] Storing origin for state {state}: {origin}");
+                lock (GoogleStateToOrigin)
+                {
+                    GoogleStateToOrigin[state] = origin;
+                }
 
                 var backendCallback = new Uri(new Uri(apiOrigin), "/signin-google").ToString();
                 
@@ -88,6 +121,7 @@ namespace auth_service.Controllers
         public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state, string provider)
         {
             string codeVerifier;
+            string? origin = null;
             lock (GoogleStateToCodeVerifier)
             {
                 if (!GoogleStateToCodeVerifier.TryGetValue(state, out codeVerifier))
@@ -96,10 +130,21 @@ namespace auth_service.Controllers
                 }
                 GoogleStateToCodeVerifier.Remove(state);
             }
+            
+            lock (GoogleStateToOrigin)
+            {
+                if (GoogleStateToOrigin.TryGetValue(state, out origin))
+                {
+                    GoogleStateToOrigin.Remove(state);
+                }
+            }
 
             var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-            var frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
+            // Use stored origin if available, otherwise fallback to config or default
+            var frontendBase = origin ?? config["Frontend:BaseUrl"] ?? "http://localhost:3000";
             var frontendComplete = $"{frontendBase}/oauth-complete";
+            
+            Console.WriteLine($"[OAuth Debug] Redirecting to frontend: {frontendComplete}");
             var backendAuthority = $"{Request.Scheme}://{Request.Host}";
             var backendCallback = provider.Equals("Google", StringComparison.OrdinalIgnoreCase)
                 ? new Uri(new Uri(backendAuthority), "/signin-google").ToString()

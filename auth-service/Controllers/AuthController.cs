@@ -23,6 +23,7 @@ namespace auth_service.Controllers
     {
         private readonly IAuthService _authService;
         private static readonly Dictionary<string, string> GoogleStateToCodeVerifier = new();
+        private static readonly Dictionary<string, string> GoogleMobileStateToRedirectUrl = new();
 
         public AuthController(IAuthService authService)
         {
@@ -389,6 +390,277 @@ namespace auth_service.Controllers
                 ["username"] = authResponse.Username,
             });
             return Redirect(redirectUrl);
+        }
+
+        // --- Web OAuth: Alias for /api/auth/google (web compatibility) ---
+        // Redirects to ExternalAuthController which handles the web OAuth flow
+        [HttpGet("google")]
+        public IActionResult GoogleLoginWeb()
+        {
+            // Use full URL for redirect to ensure it works correctly
+            var apiOrigin = $"{Request.Scheme}://{Request.Host}";
+            var redirectUrl = $"{apiOrigin}/api/ExternalAuth/login/Google";
+            return Redirect(redirectUrl);
+        }
+
+        // --- Mobile OAuth: Start Google login for mobile ---
+        [HttpGet("google-mobile")]
+        public IActionResult GoogleLoginMobile([FromQuery] string redirectUrl)
+        {
+            var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var apiOrigin = $"{Request.Scheme}://{Request.Host}";
+
+            var clientId = cfg["Authentication:Google:ClientId"];
+            if (string.IsNullOrWhiteSpace(clientId) || clientId == "YOUR_ACTUAL_GOOGLE_CLIENT_ID")
+            {
+                return StatusCode(500, new { message = "Google OAuth not configured. Please set up Google OAuth credentials in appsettings.json" });
+            }
+
+            // Validate redirectUrl is a deep link (starts with wishera://)
+            if (string.IsNullOrWhiteSpace(redirectUrl) || !redirectUrl.StartsWith("wishera://", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = "Invalid redirectUrl. Must be a deep link starting with 'wishera://'" });
+            }
+
+            var codeVerifier = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+                .Replace("+", "-").Replace("/", "_").Replace("=", string.Empty);
+            using var sha256 = SHA256.Create();
+            var codeChallengeBytes = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));
+            var codeChallenge = Convert.ToBase64String(codeChallengeBytes).Replace("+", "-").Replace("/", "_").Replace("=", string.Empty);
+
+            // Create state that includes mobile identifier
+            var state = $"google_mobile_{Guid.NewGuid():N}";
+            lock (GoogleStateToCodeVerifier) 
+            { 
+                GoogleStateToCodeVerifier[state] = codeVerifier; 
+            }
+            lock (GoogleMobileStateToRedirectUrl)
+            {
+                GoogleMobileStateToRedirectUrl[state] = redirectUrl;
+            }
+
+            var backendCallback = new Uri(new Uri(apiOrigin), "/signin-google-mobile").ToString();
+            
+            var queryParams = new Dictionary<string, string?>
+            {
+                ["client_id"] = clientId,
+                ["redirect_uri"] = backendCallback,
+                ["response_type"] = "code",
+                ["scope"] = "openid email profile",
+                ["state"] = state,
+                ["code_challenge"] = codeChallenge,
+                ["code_challenge_method"] = "S256",
+                ["prompt"] = "select_account"
+            };
+            
+            var url = QueryHelpers.AddQueryString(
+                "https://accounts.google.com/o/oauth2/v2/auth",
+                queryParams
+            );
+            return Redirect(url);
+        }
+
+        // --- Mobile OAuth: Google callback for mobile ---
+        [HttpGet("/signin-google-mobile")]
+        public async Task<IActionResult> GoogleMobileCallback([FromQuery] string code, [FromQuery] string state)
+        {
+            string codeVerifier;
+            string? redirectUrl = null;
+            
+            lock (GoogleStateToCodeVerifier)
+            {
+                if (!GoogleStateToCodeVerifier.TryGetValue(state, out codeVerifier))
+                {
+                    return BadRequest(new { message = "Invalid state" });
+                }
+                GoogleStateToCodeVerifier.Remove(state);
+            }
+            
+            lock (GoogleMobileStateToRedirectUrl)
+            {
+                if (!GoogleMobileStateToRedirectUrl.TryGetValue(state, out redirectUrl))
+                {
+                    return BadRequest(new { message = "Invalid state or redirect URL not found" });
+                }
+                GoogleMobileStateToRedirectUrl.Remove(state);
+            }
+
+            var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var backendAuthority = $"{Request.Scheme}://{Request.Host}";
+            var backendCallback = new Uri(new Uri(backendAuthority), "/signin-google-mobile").ToString();
+
+            string email = string.Empty;
+            string name = "user";
+            string googleId = string.Empty;
+
+            var clientId = config["Authentication:Google:ClientId"];
+            var clientSecret = config["Authentication:Google:ClientSecret"];
+            using var http = new HttpClient();
+            var tokenReq = new HttpRequestMessage(HttpMethod.Post, "https://oauth2.googleapis.com/token")
+            {
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["client_id"] = clientId!,
+                    ["client_secret"] = clientSecret!,
+                    ["code"] = code,
+                    ["grant_type"] = "authorization_code",
+                    ["redirect_uri"] = backendCallback,
+                    ["code_verifier"] = codeVerifier,
+                })
+            };
+            var tokenRes = await http.SendAsync(tokenReq);
+            if (!tokenRes.IsSuccessStatusCode)
+            {
+                var errorContent = await tokenRes.Content.ReadAsStringAsync();
+                Console.WriteLine($"[Mobile OAuth Error] Token exchange failed: {errorContent}");
+                return StatusCode((int)tokenRes.StatusCode, new { message = "Failed to exchange code" });
+            }
+            var tokenJson = await tokenRes.Content.ReadAsStringAsync();
+            var tokenDoc = System.Text.Json.JsonDocument.Parse(tokenJson);
+            var idToken = tokenDoc.RootElement.GetProperty("id_token").GetString();
+
+            // Validate id_token signature and claims using Google's OpenID configuration
+            var configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                "https://accounts.google.com/.well-known/openid-configuration",
+                new OpenIdConnectConfigurationRetriever());
+            var oidcConfig = await configurationManager.GetConfigurationAsync(CancellationToken.None);
+
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKeys = oidcConfig.SigningKeys,
+                ValidateIssuer = true,
+                ValidIssuers = new[] { "https://accounts.google.com", "accounts.google.com" },
+                ValidateAudience = true,
+                ValidAudience = clientId,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(5)
+            };
+
+            var handler = new JwtSecurityTokenHandler();
+            var principal = handler.ValidateToken(idToken, tokenValidationParameters, out _);
+            
+            // Extract claims from Google ID token
+            email = principal.FindFirst(ClaimTypes.Email)?.Value 
+                ?? principal.FindFirst("email")?.Value 
+                ?? string.Empty;
+            googleId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value 
+                ?? principal.FindFirst("sub")?.Value 
+                ?? string.Empty;
+            name = principal.FindFirst(ClaimTypes.Name)?.Value 
+                ?? principal.FindFirst("name")?.Value 
+                ?? "user";
+            
+            Console.WriteLine($"[Mobile OAuth Debug] Email: '{email}', GoogleId: '{googleId}', Name: '{name}'");
+            
+            // Validate that we received both email and Google ID from Google
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                Console.WriteLine("[Mobile OAuth Error] Failed to retrieve email from Google account");
+                var errorUrl = QueryHelpers.AddQueryString(redirectUrl ?? "wishera://oauth-complete", new Dictionary<string, string?>
+                {
+                    ["error"] = "Failed to retrieve email from Google account"
+                });
+                return Redirect(errorUrl);
+            }
+            if (string.IsNullOrWhiteSpace(googleId))
+            {
+                Console.WriteLine("[Mobile OAuth Error] Failed to retrieve Google ID from account");
+                var errorUrl = QueryHelpers.AddQueryString(redirectUrl ?? "wishera://oauth-complete", new Dictionary<string, string?>
+                {
+                    ["error"] = "Failed to retrieve user ID from Google account"
+                });
+                return Redirect(errorUrl);
+            }
+            
+            var emailVerified = string.Equals(principal.FindFirst("email_verified")?.Value, "true", StringComparison.OrdinalIgnoreCase);
+            if (!emailVerified)
+            {
+                Console.WriteLine($"[Mobile OAuth Warning] Email not verified for: {email}");
+            }
+
+            // Upsert or get user - prioritize Google ID over email for OAuth users
+            var dbContext = HttpContext.RequestServices.GetRequiredService<MongoDbContext>();
+            var normalizedEmail = email.Trim().ToLowerInvariant();
+            
+            Console.WriteLine($"[Mobile OAuth Debug] Looking up user - GoogleId: '{googleId}', Email: '{normalizedEmail}'");
+            
+            // For Google OAuth, first try to find by Google ID, then by email
+            var user = await dbContext.Users.Find(u => u.GoogleId == googleId).FirstOrDefaultAsync();
+            if (user == null)
+            {
+                Console.WriteLine($"[Mobile OAuth Debug] No user found with GoogleId, trying email lookup");
+                user = await dbContext.Users.Find(u => u.EmailNormalized == normalizedEmail).FirstOrDefaultAsync();
+            }
+            else
+            {
+                Console.WriteLine($"[Mobile OAuth Debug] Found user by GoogleId: {user.Id}");
+            }
+            if (user == null)
+            {
+                Console.WriteLine($"[Mobile OAuth Debug] Creating new user with email '{email}' and GoogleId '{googleId}'");
+                user = new auth_service.Models.User
+                {
+                    Username = name,
+                    Email = email,
+                    EmailNormalized = normalizedEmail,
+                    UsernameNormalized = name.Trim().ToLowerInvariant(),
+                    PasswordHash = string.Empty,
+                    CreatedAt = DateTime.UtcNow,
+                    LastActive = DateTime.UtcNow,
+                    IsEmailVerified = true,
+                    GoogleId = googleId
+                };
+                await dbContext.Users.InsertOneAsync(user);
+                Console.WriteLine($"[Mobile OAuth Debug] Created new user with ID: {user.Id}");
+            }
+            else
+            {
+                Console.WriteLine($"[Mobile OAuth Debug] Updating existing user {user.Id} - setting GoogleId to '{googleId}'");
+                // Update last active, mark email as verified, and ensure Google ID is set
+                var update = MongoDB.Driver.Builders<auth_service.Models.User>.Update
+                    .Set(u => u.LastActive, DateTime.UtcNow)
+                    .Set(u => u.IsEmailVerified, true)
+                    .Set(u => u.GoogleId, googleId);
+                await dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+            }
+
+            // Issue our JWT: always generate manually for OAuth/social sign-ins
+            var configJwtKey = config["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured");
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.ASCII.GetBytes(configJwtKey);
+            var descriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, user.Id),
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Email, user.Email)
+                }),
+                Expires = DateTime.UtcNow.AddDays(7),
+                Issuer = config["Jwt:Issuer"],
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            };
+            var token = tokenHandler.CreateToken(descriptor);
+            var authResponse = new AuthResponseDTO
+            {
+                UserId = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                Token = tokenHandler.WriteToken(token),
+                ExpiresAt = descriptor.Expires ?? DateTime.UtcNow.AddDays(7)
+            };
+
+            // Redirect to mobile deep link with token
+            var mobileRedirectUrl = QueryHelpers.AddQueryString(redirectUrl ?? "wishera://oauth-complete", new Dictionary<string, string?>
+            {
+                ["token"] = authResponse.Token,
+                ["userId"] = authResponse.UserId,
+                ["username"] = authResponse.Username,
+            });
+            
+            Console.WriteLine($"[Mobile OAuth Debug] Redirecting to mobile app: {mobileRedirectUrl}");
+            return Redirect(mobileRedirectUrl);
         }
 
     }

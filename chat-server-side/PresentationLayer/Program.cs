@@ -18,14 +18,6 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure port for Render.com - Render provides PORT environment variable
-var port = Environment.GetEnvironmentVariable("PORT");
-if (!string.IsNullOrEmpty(port))
-{
-    // Use + to bind to all interfaces (both IPv4 and IPv6)
-    builder.WebHost.UseUrls($"http://+:{port}");
-}
-
 // Messaging-only: no persistence or auth required for delivery
 
 
@@ -42,9 +34,7 @@ builder.Services.AddSingleton<IMongoClient>(sp =>
         ?? cfg.GetConnectionString("MongoDB");
     if (string.IsNullOrWhiteSpace(mongoUrl))
     {
-        Console.WriteLine("WARNING: MongoDB connection string is not configured. Set ChatMongo:ConnectionString or MONGO_URL.");
-        // Return a dummy client to prevent startup failure - service can still run for SignalR
-        return new MongoClient("mongodb://localhost:27017");
+        throw new InvalidOperationException("MongoDB connection string is not configured. Set ChatMongo:ConnectionString or MONGO_URL.");
     }
     return new MongoClient(mongoUrl);
 });
@@ -64,27 +54,15 @@ builder.Services.AddCors(c =>
             "http://localhost:3001",      // Web frontend alt
             "http://localhost:8081",      // React Native Metro bundler
             "http://localhost:19000",     // Expo development
-            "http://localhost:19006",     // Expo web default
-            "http://localhost:19001",     // Expo web alt
+            "http://localhost:19006",     // Expo tunnel
             "http://127.0.0.1:3000",      // iOS simulator web
             "http://127.0.0.1:3001",      // iOS simulator web alt
             "http://127.0.0.1:8081",      // iOS simulator
-            "http://127.0.0.1:19006",     // iOS simulator Expo web
-            "http://10.0.2.2:8081",       // Android emulator
-            "http://10.0.2.2:19006",      // Android emulator Expo web
-            "https://wishera.vercel.app", // Production frontend
-            "https://wishera.vercel.app/" // Production frontend (with trailing slash)
+            "http://10.0.2.2:8081"        // Android emulator
         )
         .AllowAnyMethod()
         .AllowAnyHeader()
         .AllowCredentials());
-	
-	c.AddPolicy("AllowVercel", policy =>
-	{
-		policy.WithOrigins("https://wishera.vercel.app")
-			.AllowAnyHeader()
-			.AllowAnyMethod();
-	});
 });
 
 

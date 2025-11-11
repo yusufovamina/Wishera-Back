@@ -1,7 +1,6 @@
-extern alias WishlistApp;
 using MongoDB.Driver;
-using WishlistApp::WisheraApp.DTO;
-using WishlistApp::WisheraApp.Models;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CloudinaryDotNet;
@@ -22,7 +21,7 @@ namespace gift_wishlist_service.Services
 
    
 
-    public class WishlistService : WishlistApp::WisheraApp.Services.IWishlistService
+    public class WishlistService : WisheraApp.Services.IWishlistService
     {
         private readonly MongoDbContext _dbContext;
         private readonly ICloudinaryService _cloudinaryService;
@@ -90,7 +89,7 @@ namespace gift_wishlist_service.Services
 		public async Task<WishlistResponseDTO> GetWishlistAsync(string id, string currentUserId)
         {
 			var cacheKey = $"wishlist:detail:{id}:{currentUserId}";
-			return await _cache.GetOrSetAsync(cacheKey, async () =>
+			var result = await _cache.GetOrSetAsync(cacheKey, async () =>
 			{
 				var wishlist = await _dbContext.Wishlists.Find(w => w.Id == id).FirstOrDefaultAsync();
             if (wishlist == null) throw new KeyNotFoundException("Wishlist not found.");
@@ -148,8 +147,9 @@ namespace gift_wishlist_service.Services
                 IsLiked = isLiked,
                 IsOwner = wishlist.UserId == currentUserId
             };
-			}, TimeSpan.FromMinutes(2))!;
-		}
+			}, TimeSpan.FromMinutes(2));
+            return result!;
+        }
 
         public async Task<WishlistResponseDTO> UpdateWishlistAsync(string id, string currentUserId, UpdateWishlistDTO updateDto)
         {
@@ -177,9 +177,8 @@ namespace gift_wishlist_service.Services
 
             if (wishlist.UserId != currentUserId) throw new UnauthorizedAccessException("You are not authorized to delete this wishlist.");
 
-            // Unassign associated gifts (set WishlistId to null instead of deleting them)
-            var giftUpdate = Builders<Gift>.Update.Set(g => g.WishlistId, (string?)null);
-            await _dbContext.Gifts.UpdateManyAsync(g => g.WishlistId == id, giftUpdate);
+            // Remove associated gifts
+            await _dbContext.Gifts.DeleteManyAsync(g => g.WishlistId == id);
             // Remove associated likes
             await _dbContext.Likes.DeleteManyAsync(l => l.WishlistId == id);
             // Remove associated comments
@@ -323,7 +322,7 @@ namespace gift_wishlist_service.Services
             );
 
             var cacheKey = $"wishlist:feed:v2:{currentUserId}:{page}:{pageSize}";
-			return await _cache.GetOrSetAsync(cacheKey, async () =>
+			var result = await _cache.GetOrSetAsync(cacheKey, async () =>
 			{
 				var feedWishlists = await _dbContext.Wishlists.Find(filter)
                                              .SortByDescending(w => w.CreatedAt)
@@ -371,7 +370,8 @@ namespace gift_wishlist_service.Services
                 });
             }
 				return feedDTOs;
-			}, TimeSpan.FromSeconds(30))!;
+			}, TimeSpan.FromSeconds(30));
+            return result!;
         }
 
         public async Task<bool> LikeWishlistAsync(string id, string currentUserId)
@@ -632,7 +632,7 @@ namespace gift_wishlist_service.Services
         public async Task<List<WishlistFeedDTO>> GetLikedWishlistsAsync(string currentUserId, int page = 1, int pageSize = 20)
         {
             var cacheKey = $"wishlist:liked:{currentUserId}:{page}:{pageSize}";
-            return await _cache.GetOrSetAsync(cacheKey, async () =>
+            var result = await _cache.GetOrSetAsync(cacheKey, async () =>
             {
                 // Get all likes for the current user
                 var userLikes = await _dbContext.Likes
@@ -705,7 +705,8 @@ namespace gift_wishlist_service.Services
                 }
 
                 return sortedDTOs;
-            }, TimeSpan.FromSeconds(30))!;
+            }, TimeSpan.FromSeconds(30));
+            return result!;
         }
     }
 }

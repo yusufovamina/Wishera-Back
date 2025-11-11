@@ -2,7 +2,6 @@ using MongoDB.Driver;
 using user_service.Models;
 using WisheraApp.DTO;
 using WisheraApp.Models;
-using System.Threading;
 
 namespace user_service.Services
 {
@@ -41,109 +40,78 @@ namespace user_service.Services
 
         public async Task<EventDTO> CreateEventAsync(string creatorId, CreateEventDTO createEventDto)
         {
-            // Use cancellation token with timeout (30 seconds for event creation)
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            
-            try
+            if (!IsValidObjectId(creatorId)) throw new ArgumentException("Invalid creator ID format.");
+
+            // Validate invitee IDs
+            foreach (var inviteeId in createEventDto.InviteeIds)
             {
-                if (!IsValidObjectId(creatorId)) throw new ArgumentException("Invalid creator ID format.");
-
-                // Validate invitee IDs
-                foreach (var inviteeId in createEventDto.InviteeIds)
-                {
-                    if (!IsValidObjectId(inviteeId)) throw new ArgumentException($"Invalid invitee ID format: {inviteeId}");
-                }
-
-                // Verify creator exists
-                var creator = await _dbContext.Users.Find(u => u.Id == creatorId).FirstOrDefaultAsync(cts.Token);
-                if (creator == null) throw new KeyNotFoundException("Creator not found.");
-
-                // Verify all invitees exist and are friends
-                var invitees = await _dbContext.Users.Find(u => createEventDto.InviteeIds.Contains(u.Id)).ToListAsync(cts.Token);
-                if (invitees.Count != createEventDto.InviteeIds.Count)
-                    throw new ArgumentException("One or more invitees not found.");
-
-                // Check if invitees are friends
-                foreach (var invitee in invitees)
-                {
-                    if (!creator.FollowingIds.Contains(invitee.Id))
-                        throw new ArgumentException($"User {invitee.Username} is not in your friends list.");
-                }
-
-                // Create event
-                var eventEntity = new Event
-                {
-                    Title = createEventDto.Title,
-                    Description = createEventDto.Description,
-                    EventDate = createEventDto.EventDate,
-                    EventTime = createEventDto.EventTime,
-                    Location = createEventDto.Location,
-                    AdditionalNotes = createEventDto.AdditionalNotes,
-                    CreatorId = creatorId,
-                    InviteeIds = createEventDto.InviteeIds,
-                    EventType = createEventDto.EventType,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-
-                await _dbContext.Events.InsertOneAsync(eventEntity, cancellationToken: cts.Token);
-
-                // Create invitations
-                var invitations = createEventDto.InviteeIds.Select(inviteeId => new EventInvitation
-                {
-                    EventId = eventEntity.Id,
-                    InviteeId = inviteeId,
-                    InviterId = creatorId,
-                    Status = InvitationStatus.Pending,
-                    InvitedAt = DateTime.UtcNow
-                }).ToList();
-
-                if (invitations.Any())
-                {
-                    await _dbContext.EventInvitations.InsertManyAsync(invitations, cancellationToken: cts.Token);
-                }
-
-                // Send notifications to invitees (non-blocking - don't fail event creation if notifications fail)
-                foreach (var invitation in invitations)
-                {
-                    try
-                    {
-                        await _notificationService.CreateEventInvitationNotificationAsync(
-                            invitation.InviteeId, 
-                            creatorId, 
-                            eventEntity.Id, 
-                            eventEntity.Title
-                        );
-                    }
-                    catch (Exception ex)
-                    {
-                        // Log but don't fail event creation if notification fails
-                        Console.WriteLine($"Failed to send notification to {invitation.InviteeId}: {ex.Message}");
-                    }
-                }
-
-                // Clear cache (non-blocking)
-                try
-                {
-                    await _cache.RemoveAsync($"user:events:{creatorId}");
-                }
-                catch (Exception ex)
-                {
-                    // Log but don't fail if cache removal fails
-                    Console.WriteLine($"Failed to clear cache: {ex.Message}");
-                }
-
-                return await GetEventByIdAsync(eventEntity.Id, creatorId);
+                if (!IsValidObjectId(inviteeId)) throw new ArgumentException($"Invalid invitee ID format: {inviteeId}");
             }
-            catch (OperationCanceledException)
+
+            // Verify creator exists
+            var creator = await _dbContext.Users.Find(u => u.Id == creatorId).FirstOrDefaultAsync();
+            if (creator == null) throw new KeyNotFoundException("Creator not found.");
+
+            // Verify all invitees exist and are friends
+            var invitees = await _dbContext.Users.Find(u => createEventDto.InviteeIds.Contains(u.Id)).ToListAsync();
+            if (invitees.Count != createEventDto.InviteeIds.Count)
+                throw new ArgumentException("One or more invitees not found.");
+
+            // Check if invitees are friends
+            foreach (var invitee in invitees)
             {
-                throw new TimeoutException("Event creation request timed out. Please try again.");
+                if (!creator.FollowingIds.Contains(invitee.Id))
+                    throw new ArgumentException($"User {invitee.Username} is not in your friends list.");
             }
-            catch (MongoException ex)
+
+            // Create event
+            var eventEntity = new Event
             {
-                Console.WriteLine($"MongoDB error during event creation: {ex.Message}");
-                throw new InvalidOperationException("Database connection error. Please try again later.");
+                Title = createEventDto.Title,
+                Description = createEventDto.Description,
+                EventDate = createEventDto.EventDate,
+                EventTime = createEventDto.EventTime,
+                Location = createEventDto.Location,
+                AdditionalNotes = createEventDto.AdditionalNotes,
+                CreatorId = creatorId,
+                InviteeIds = createEventDto.InviteeIds,
+                EventType = createEventDto.EventType,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            await _dbContext.Events.InsertOneAsync(eventEntity);
+
+            // Create invitations
+            var invitations = createEventDto.InviteeIds.Select(inviteeId => new EventInvitation
+            {
+                EventId = eventEntity.Id,
+                InviteeId = inviteeId,
+                InviterId = creatorId,
+                Status = InvitationStatus.Pending,
+                InvitedAt = DateTime.UtcNow
+            }).ToList();
+
+            if (invitations.Any())
+            {
+                await _dbContext.EventInvitations.InsertManyAsync(invitations);
             }
+
+            // Send notifications to invitees
+            foreach (var invitation in invitations)
+            {
+                await _notificationService.CreateEventInvitationNotificationAsync(
+                    invitation.InviteeId, 
+                    creatorId, 
+                    eventEntity.Id, 
+                    eventEntity.Title
+                );
+            }
+
+            // Clear cache
+            await _cache.RemoveAsync($"user:events:{creatorId}");
+
+            return await GetEventByIdAsync(eventEntity.Id, creatorId);
         }
 
         public async Task<EventDTO?> GetEventByIdAsync(string eventId, string currentUserId)
@@ -335,19 +303,6 @@ namespace user_service.Services
 
                 return eventDtos;
             }, TimeSpan.FromMinutes(10));
-
-            // Handle null cache result
-            if (cachedData == null)
-            {
-                return new EventListDTO
-                {
-                    Events = new List<EventDTO>(),
-                    TotalCount = 0,
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalPages = 0
-                };
-            }
 
             // Apply pagination to the cached data
             var totalCount = cachedData.Count;

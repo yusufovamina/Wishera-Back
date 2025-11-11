@@ -27,12 +27,6 @@ namespace auth_service.DTO
         public string Email { get; set; } = string.Empty;
     }
 
-    public class VerifyResetCodeDTO
-    {
-        public string Email { get; set; } = string.Empty;
-        public string Code { get; set; } = string.Empty;
-    }
-
     public class ResetPasswordDTO
     {
         public string Token { get; set; } = string.Empty;

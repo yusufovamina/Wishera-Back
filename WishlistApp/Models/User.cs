@@ -46,17 +46,9 @@ namespace WisheraApp.Models
 
         // Password reset fields
         [BsonElement("resetPasswordToken")]
-        public string? ResetPasswordToken { get; set; }
+        public string? ResetToken { get; set; }
         [BsonElement("resetPasswordTokenExpiry")]
-        public DateTime? ResetPasswordTokenExpiry { get; set; }
-
-        // Email verification fields (for compatibility with user-service)
-        [BsonElement("isEmailVerified")]
-        public bool IsEmailVerified { get; set; } = false;
-        [BsonElement("emailVerificationToken")]
-        public string? EmailVerificationToken { get; set; }
-        [BsonElement("emailVerificationTokenExpiry")]
-        public DateTime? EmailVerificationTokenExpiry { get; set; }
+        public DateTime? ResetTokenExpiry { get; set; }
 
         // Social features
         [BsonElement("followingIds")]

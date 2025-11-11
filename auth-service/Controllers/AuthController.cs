@@ -22,6 +22,7 @@ namespace auth_service.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private static readonly Dictionary<string, string> GoogleStateToCodeVerifier = new();
 
         public AuthController(IAuthService authService)
         {
@@ -47,28 +48,12 @@ namespace auth_service.Controllers
         {
             try
             {
-                if (loginDto == null || string.IsNullOrWhiteSpace(loginDto.Email) || string.IsNullOrWhiteSpace(loginDto.Password))
-                {
-                    return BadRequest(new { message = "Email and password are required" });
-                }
-
                 var response = await _authService.LoginAsync(loginDto);
                 return Ok(response);
-            }
-            catch (TimeoutException ex)
-            {
-                Console.WriteLine($"Login timeout: {ex.Message}");
-                return StatusCode(504, new { message = ex.Message });
             }
             catch (InvalidOperationException ex)
             {
                 return BadRequest(new { message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Login error: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                return StatusCode(500, new { message = "An error occurred during login. Please try again later." });
             }
         }
 
@@ -77,27 +62,8 @@ namespace auth_service.Controllers
         {
             try
             {
-                // Detect if this is a mobile client
-                // Only trust explicit X-Client-Type header
-                // Don't use User-Agent as it can be misleading (web browsers can have "Mobile" in UA)
-                var isMobile = Request.Headers["X-Client-Type"].ToString().Equals("mobile", StringComparison.OrdinalIgnoreCase);
-                
-                await _authService.ForgotPasswordAsync(forgotPasswordDto.Email, isMobile);
-                return Ok(new { message = "Password reset code sent to your email" });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpPost("verify-reset-code")]
-        public async Task<ActionResult> VerifyResetCode(VerifyResetCodeDTO verifyCodeDto)
-        {
-            try
-            {
-                var token = await _authService.VerifyResetCodeAsync(verifyCodeDto.Email, verifyCodeDto.Code);
-                return Ok(new { token, message = "Code verified successfully" });
+                await _authService.ForgotPasswordAsync(forgotPasswordDto.Email);
+                return Ok(new { message = "Password reset link sent to your email" });
             }
             catch (InvalidOperationException ex)
             {
@@ -191,19 +157,10 @@ namespace auth_service.Controllers
         }
 
         [HttpGet("external/{provider}")]
-        public IActionResult ExternalLoginStart(string provider, [FromQuery] string? clientType = null)
+        public IActionResult ExternalLoginStart(string provider)
         {
             var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
             var apiOrigin = $"{Request.Scheme}://{Request.Host}";
-            
-            // Detect if this is a mobile client
-            // Only trust explicit clientType parameter or X-Client-Type header
-            // Don't use User-Agent as it can be misleading (web browsers can have "Mobile" in UA)
-            var isMobile = string.Equals(clientType, "mobile", StringComparison.OrdinalIgnoreCase) ||
-                          Request.Headers["X-Client-Type"].ToString().Equals("mobile", StringComparison.OrdinalIgnoreCase);
-            
-            // Store client type in state for callback
-            var clientTypeState = isMobile ? "mobile" : "web";
 
             if (string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase))
             {
@@ -216,16 +173,10 @@ namespace auth_service.Controllers
                 var codeChallengeBytes = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));
                 var codeChallenge = Convert.ToBase64String(codeChallengeBytes).Replace("+", "-").Replace("/", "_").Replace("=", string.Empty);
 
-                var state = $"google_{clientTypeState}_{Guid.NewGuid():N}";
-                OAuthStateManager.StoreCodeVerifier(state, codeVerifier);
+                var state = $"google_{Guid.NewGuid():N}";
+                lock (GoogleStateToCodeVerifier) { GoogleStateToCodeVerifier[state] = codeVerifier; }
 
-                // Get redirect URI - use explicit config if available, otherwise construct from request
-                var explicitRedirectUri = cfg["Authentication:Google:RedirectUri"];
-                var backendCallback = !string.IsNullOrWhiteSpace(explicitRedirectUri)
-                    ? explicitRedirectUri
-                    : new Uri(new Uri(apiOrigin), "/signin-google").ToString();
-                
-                Console.WriteLine($"[OAuth Login] Using redirect URI: {backendCallback}");
+                var backendCallback = new Uri(new Uri(apiOrigin), "/signin-google").ToString();
                 var url = QueryHelpers.AddQueryString(
                     "https://accounts.google.com/o/oauth2/v2/auth",
                     new Dictionary<string, string?>
@@ -254,71 +205,23 @@ namespace auth_service.Controllers
         [HttpGet("callback/{provider}")]
         public async Task<IActionResult> ExternalCallback([FromQuery] string code, [FromQuery] string state, string provider)
         {
-            // Use shared OAuthStateManager to retrieve code verifier (works across controllers)
-            var codeVerifier = OAuthStateManager.TryGetAndRemoveCodeVerifier(state);
-            if (string.IsNullOrEmpty(codeVerifier))
+            string codeVerifier;
+            lock (GoogleStateToCodeVerifier)
             {
-                return BadRequest(new { message = "Invalid state" });
+                if (!GoogleStateToCodeVerifier.TryGetValue(state, out codeVerifier))
+                {
+                    return BadRequest(new { message = "Invalid state" });
+                }
+                GoogleStateToCodeVerifier.Remove(state);
             }
 
             var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-            
-            // Detect if this is a mobile client from the state parameter
-            var isMobile = state.StartsWith("google_mobile_", StringComparison.OrdinalIgnoreCase);
-            
-            // Use appropriate redirect URL based on client type
-            string frontendComplete;
-            if (isMobile)
-            {
-                // Mobile uses deep link
-                var mobileBaseUrl = config["Frontend:MobileBaseUrl"] ?? "wishera://";
-                frontendComplete = $"{mobileBaseUrl}oauth-complete";
-            }
-            else
-            {
-                // Web uses HTTP URL
-                // Try to get the origin from Referer or Origin header for dynamic detection
-                var referer = Request.Headers["Referer"].ToString();
-                var origin = Request.Headers["Origin"].ToString();
-                string frontendBase;
-                
-                if (!string.IsNullOrEmpty(origin))
-                {
-                    // Use the origin from the request (e.g., http://localhost:19006)
-                    frontendBase = origin;
-                }
-                else if (!string.IsNullOrEmpty(referer))
-                {
-                    // Parse origin from referer URL
-                    try
-                    {
-                        var refererUri = new Uri(referer);
-                        frontendBase = $"{refererUri.Scheme}://{refererUri.Authority}";
-                    }
-                    catch
-                    {
-                        frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
-                    }
-                }
-                else
-                {
-                    // Fallback to configured URL
-                    frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
-                }
-                
-                frontendComplete = $"{frontendBase}/oauth-complete";
-            }
-            
-            // Get redirect URI - use explicit config if available, otherwise construct from request
-            var explicitRedirectUri = config["Authentication:Google:RedirectUri"];
+            var frontendBase = config["Frontend:BaseUrl"] ?? "http://localhost:3000";
+            var frontendComplete = $"{frontendBase}/oauth-complete";
             var backendAuthority = $"{Request.Scheme}://{Request.Host}";
             var backendCallback = provider.Equals("Google", StringComparison.OrdinalIgnoreCase)
-                ? (!string.IsNullOrWhiteSpace(explicitRedirectUri)
-                    ? explicitRedirectUri
-                    : new Uri(new Uri(backendAuthority), "/signin-google").ToString())
+                ? new Uri(new Uri(backendAuthority), "/signin-google").ToString()
                 : new Uri(new Uri(backendAuthority), "/signin-twitter").ToString();
-            
-            Console.WriteLine($"[OAuth Callback] Using redirect URI: {backendCallback}");
 
             string email = string.Empty;
             string name = "user";

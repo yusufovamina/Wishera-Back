@@ -1,10 +1,9 @@
-extern alias WishlistApp;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using gift_wishlist_service.Services;
-using WishlistApp::WisheraApp.DTO;
-using WishlistApp::WisheraApp.Models;
+using WisheraApp.Models;
+using WisheraApp.DTO;
 
 namespace gift_wishlist_service.Controllers
 {
@@ -28,7 +27,9 @@ namespace gift_wishlist_service.Controllers
         public async Task<IActionResult> CreateGift([FromForm] string name, [FromForm] decimal price, [FromForm] string category, [FromForm] string? wishlistId = null, IFormFile? imageFile = null)
         {
             var userId = GetCurrentUserId();
-            // This microservice's IWishlistService exposes gift operations via separate methods; create via RPC-like handler
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
+            
             var result = await _giftApiService.CreateGiftAsync(name, price, category, wishlistId, userId, imageFile);
             return Ok(result);
         }
@@ -130,10 +131,19 @@ namespace gift_wishlist_service.Controllers
             var userId = GetCurrentUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new { message = "User not authenticated" });
-            
+            var result = await _giftApiService.AssignGiftToWishlistAsync(id, assignDto.WishlistId);
+            return Ok(result);
+        }
+
+        [HttpPost("{id}/remove-from-wishlist")]
+        public async Task<IActionResult> RemoveGiftFromWishlist(string id)
+        {
+            var userId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new { message = "User not authenticated" });
             try
             {
-                var result = await _giftApiService.AssignGiftToWishlistAsync(id, assignDto.WishlistId, userId);
+                var result = await _giftApiService.RemoveGiftFromWishlistAsync(id, userId);
                 return Ok(result);
             }
             catch (KeyNotFoundException ex)
@@ -144,16 +154,10 @@ namespace gift_wishlist_service.Controllers
             {
                 return Unauthorized(new { message = ex.Message });
             }
-        }
-
-        [HttpPost("{id}/remove-from-wishlist")]
-        public async Task<IActionResult> RemoveGiftFromWishlist(string id)
-        {
-            var userId = GetCurrentUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new { message = "User not authenticated" });
-            var result = await _giftApiService.RemoveGiftFromWishlistAsync(id, userId);
-            return Ok(result);
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
     }
 }

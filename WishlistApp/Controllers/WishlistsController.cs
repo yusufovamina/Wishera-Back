@@ -9,7 +9,7 @@ namespace WisheraApp.Controllers
 {
     [Authorize]
     [ApiController]
-    [Route("api/wishlists")] // Use explicit lowercase route only
+    [Route("api/[controller]")]
     public class WishlistsController : ControllerBase
     {
         private readonly IGiftWishlistServiceClient _giftWishlistServiceClient;
@@ -159,33 +159,13 @@ namespace WisheraApp.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            try
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
             {
-                var currentUserId = GetCurrentUserId();
-                if (string.IsNullOrEmpty(currentUserId))
-                {
-                    return Unauthorized(new { message = "User not authenticated. Please log in." });
-                }
-                
-                var feed = await _giftWishlistServiceClient.GetFeedAsync(currentUserId, page, pageSize);
-                return Ok(feed);
+                return Unauthorized(new { message = "User not authenticated" });
             }
-            catch (TimeoutException ex)
-            {
-                Console.WriteLine($"Feed request timeout: {ex.Message}");
-                return StatusCode(502, new { message = "Service temporarily unavailable. Please try again later." });
-            }
-            catch (InvalidOperationException ex)
-            {
-                Console.WriteLine($"Feed service unavailable: {ex.Message}");
-                return StatusCode(502, new { message = "Service temporarily unavailable. Please try again later." });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error fetching feed: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                return StatusCode(502, new { message = "Unable to fetch feed. Please try again later.", details = ex.Message });
-            }
+            var feed = await _giftWishlistServiceClient.GetFeedAsync(currentUserId, page, pageSize);
+            return Ok(feed);
         }
 
         [HttpPost("upload-image")]

@@ -5,7 +5,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>gift_wishlist_service</RootNamespace>
-    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,14 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\WishlistApp\WishlistApp.csproj" Aliases="WishlistApp" />
+    <ProjectReference Include="..\WishlistApp\WishlistApp.csproj" />
   </ItemGroup>
-
-  <Target Name="ExcludeAppSettingsFromPublish" BeforeTargets="PrepareForPublish">
-    <ItemGroup>
-      <Content Remove="@(Content)" Condition="'%(Content.Filename)' == 'appsettings' Or '%(Content.Filename)' == 'appsettings.Development'" />
-      <ContentWithTargetPath Remove="@(ContentWithTargetPath)" Condition="'%(ContentWithTargetPath.Filename)' == 'appsettings' Or '%(ContentWithTargetPath.Filename)' == 'appsettings.Development'" />
-    </ItemGroup>
-  </Target>
 
 </Project>

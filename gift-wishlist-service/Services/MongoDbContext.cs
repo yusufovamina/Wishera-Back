@@ -1,6 +1,5 @@
-extern alias WishlistApp;
 using MongoDB.Driver;
-using WishlistApp::WisheraApp.Models;
+using WisheraApp.Models;
 
 namespace gift_wishlist_service.Services
 {
@@ -13,7 +12,7 @@ namespace gift_wishlist_service.Services
             _database = database;
         }
 
-        public IMongoCollection<WishlistApp::WisheraApp.Models.User> Users => _database.GetCollection<WishlistApp::WisheraApp.Models.User>("Users");
+        public IMongoCollection<User> Users => _database.GetCollection<User>("Users");
         public IMongoCollection<Wishlist> Wishlists => _database.GetCollection<Wishlist>("Wishlists");
         public IMongoCollection<Like> Likes => _database.GetCollection<Like>("Likes");
         public IMongoCollection<Comment> Comments => _database.GetCollection<Comment>("Comments");

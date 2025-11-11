@@ -1,22 +1,16 @@
-extern alias WishlistApp;
 using CloudinaryDotNet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using System.Text;
 using gift_wishlist_service.Services;
-using WishlistApp::WisheraApp.DTO;
-using WishlistApp::WisheraApp.Models;
-using WishlistApp::WisheraApp.Services;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Configure port for Render.com
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5003";
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 builder.Services.AddControllers().ConfigureApplicationPartManager(apm =>
 {
@@ -63,7 +57,7 @@ builder.Services
     });
 
 // Register core services (match hosted service singleton lifetime)
-builder.Services.AddSingleton<IWishlistService, WishlistService>();
+builder.Services.AddSingleton<WisheraApp.Services.IWishlistService, WishlistService>();
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
 builder.Services.AddSingleton<IGiftApiService, GiftApiService>();
 builder.Services.AddSingleton<ICacheService, CacheService>();
@@ -91,18 +85,11 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
 			"http://localhost:3000",      // Web frontend
-			"http://localhost:3001",      // Web frontend alt
 			"http://localhost:8081",      // React Native Metro bundler
 			"http://localhost:19000",     // Expo development
-			"http://localhost:19006",     // Expo web default
-			"http://localhost:19001",     // Expo web alt
-			"http://127.0.0.1:3000",      // iOS simulator web
-			"http://127.0.0.1:3001",      // iOS simulator web alt
-			"http://127.0.0.1:8081",      // iOS simulator
-			"http://127.0.0.1:19006",     // iOS simulator Expo web
-			"http://10.0.2.2:8081",       // Android emulator
-			"http://10.0.2.2:19006",      // Android emulator Expo web
-			"https://wishera.vercel.app"  // Production frontend
+			"http://localhost:19006",     // Expo tunnel
+			"http://127.0.0.1:8081",       // iOS simulator
+			"http://10.0.2.2:8081"        // Android emulator
 		)
 		.AllowAnyHeader()
 		.AllowAnyMethod()
@@ -124,6 +111,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapGet("/health", () => Results.Ok("Healthy"));
 
 app.Run();

@@ -4,6 +4,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace WisheraApp.Models
 {
+    [BsonIgnoreExtraElements]
     public class Gift
     {
         [BsonId]
@@ -14,7 +15,7 @@ namespace WisheraApp.Models
         public string ImageUrl { get; set; } = ""; // Ensure default value
         public required string Category { get; set; }
         public string? WishlistId { get; set; }
-        public string? UserId { get; set; } // Track which user owns this gift
+        public string? UserId { get; set; } // Owner/Creator of the gift
         public string? ReservedByUserId { get; set; } = null;
         public string? ReservedByUsername { get; set; } = null; // ✅ Store username
     }

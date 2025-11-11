@@ -1,12 +1,10 @@
-extern alias WishlistApp;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using WishlistApp::WisheraApp.DTO;
-using WishlistApp::WisheraApp.Models;
-using WishlistApp::WisheraApp.Services;
+using WisheraApp.DTO;
+using WisheraApp.Models;
 using MongoDB.Driver;
 
 namespace gift_wishlist_service.Services
@@ -14,9 +12,10 @@ namespace gift_wishlist_service.Services
     public class GiftWishlistRpcServer : IHostedService, IDisposable
     {
         private readonly IConfiguration _configuration;
-        private readonly IWishlistService _wishlistService;
+        private readonly WisheraApp.Services.IWishlistService _wishlistService;
         private readonly gift_wishlist_service.Services.ICloudinaryService _cloudinaryService;
         private readonly gift_wishlist_service.Services.MongoDbContext _dbContext;
+        private readonly gift_wishlist_service.Services.ICacheService _cache;
         private IConnection? _connection;
         private IModel? _channel;
         private CancellationTokenSource? _cts;
@@ -26,14 +25,16 @@ namespace gift_wishlist_service.Services
 
         public GiftWishlistRpcServer(
             IConfiguration configuration, 
-            IWishlistService wishlistService,
+            WisheraApp.Services.IWishlistService wishlistService,
             gift_wishlist_service.Services.ICloudinaryService cloudinaryService,
-            gift_wishlist_service.Services.MongoDbContext dbContext)
+            gift_wishlist_service.Services.MongoDbContext dbContext,
+            gift_wishlist_service.Services.ICacheService cache)
         {
             _configuration = configuration;
             _wishlistService = wishlistService;
             _cloudinaryService = cloudinaryService;
             _dbContext = dbContext;
+            _cache = cache;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
@@ -47,33 +48,13 @@ namespace gift_wishlist_service.Services
                 {
                     try
                     {
-                        // Support environment variables for Render.com/CloudAMQP
-                        var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
-                            ?? _configuration["RabbitMq:HostName"] 
-                            ?? "localhost";
-                        var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
-                            ?? _configuration["RabbitMq:UserName"] 
-                            ?? "guest";
-                        var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
-                            ?? _configuration["RabbitMq:Password"] 
-                            ?? "guest";
-                        var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
-                            ?? _configuration["RabbitMq:VirtualHost"] 
-                            ?? "/";
-                        
-                        // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
-                        if (virtualHost == "/" && userName != "guest")
-                        {
-                            virtualHost = userName;
-                        }
-
                         var factory = new ConnectionFactory
                         {
-                            HostName = hostName,
-                            UserName = userName,
-                            Password = password,
-                            VirtualHost = virtualHost,
-                            Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? _configuration["RabbitMq:Port"], out var port) ? port : 5672
+                            HostName = _configuration["RabbitMq:HostName"] ?? "localhost",
+                            UserName = _configuration["RabbitMq:UserName"] ?? "guest",
+                            Password = _configuration["RabbitMq:Password"] ?? "guest",
+                            VirtualHost = _configuration["RabbitMq:VirtualHost"] ?? "/",
+                            Port = int.TryParse(_configuration["RabbitMq:Port"], out var port) ? port : 5672
                         };
                         _exchange = _configuration["RabbitMq:Exchange"] ?? _exchange;
                         _queue = _configuration["RabbitMq:Queue"] ?? _queue;
@@ -231,7 +212,7 @@ namespace gift_wishlist_service.Services
                         Price = createGiftData.Price,
                         Category = createGiftData.Category,
                         WishlistId = createGiftData.WishlistId,
-                        UserId = createGiftData.UserId
+                        UserId = createGiftData.UserId // Track the creator/owner of the gift
                     };
                     if (createGiftData.ImageFile != null)
                     {
@@ -291,9 +272,11 @@ namespace gift_wishlist_service.Services
                     Console.WriteLine($"Found {userWishlistsList.Count} wishlists for user {getUserWishlistData.UserId}");
                     Console.WriteLine($"Wishlist IDs: [{string.Join(", ", wishlistIds)}]");
                     
-                    // Only return gifts that belong to the user's actual wishlists
-                    // Remove the filter for gifts with wishlistId == null to prevent showing orphaned gifts
-                    var filter = MongoDB.Driver.Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds);
+                    // Return gifts that belong to the user's wishlists OR gifts owned by the user (including those not in any wishlist)
+                    var filter = MongoDB.Driver.Builders<Gift>.Filter.Or(
+                        MongoDB.Driver.Builders<Gift>.Filter.In(g => g.WishlistId, wishlistIds),
+                        MongoDB.Driver.Builders<Gift>.Filter.Eq(g => g.UserId, getUserWishlistData.UserId)
+                    );
                     
                     if (!string.IsNullOrEmpty(getUserWishlistData.Category))
                     {
@@ -318,7 +301,7 @@ namespace gift_wishlist_service.Services
                     Console.WriteLine($"Found {gifts.Count} gifts for user {getUserWishlistData.UserId}");
                     foreach (var giftItem in gifts)
                     {
-                        Console.WriteLine($"  Gift: {giftItem.Name} (WishlistId: {giftItem.WishlistId})");
+                        Console.WriteLine($"  Gift: {giftItem.Name} (WishlistId: {giftItem.WishlistId}, UserId: {giftItem.UserId})");
                     }
                     
                     return JsonSerializer.Serialize(gifts);
@@ -345,16 +328,65 @@ namespace gift_wishlist_service.Services
                     var giftToAssign = await _dbContext.Gifts.Find(g => g.Id == assignData.GiftId).FirstOrDefaultAsync();
                     if (giftToAssign == null) throw new KeyNotFoundException("Gift not found");
                     
+                    var oldWishlistIdForAssign = giftToAssign.WishlistId;
                     giftToAssign.WishlistId = assignData.WishlistId;
                     await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == assignData.GiftId, giftToAssign);
+                    
+                    // Get wishlist to get owner ID for cache invalidation
+                    var newWishlist = await _dbContext.Wishlists.Find(w => w.Id == assignData.WishlistId).FirstOrDefaultAsync();
+                    if (newWishlist != null)
+                    {
+                        // Invalidate cache for the new wishlist
+                        await _cache.RemoveAsync($"wishlist:detail:{assignData.WishlistId}:{newWishlist.UserId}");
+                        await _cache.RemoveAsync($"wishlist:feed:{newWishlist.UserId}:1:10");
+                        await _cache.RemoveAsync($"wishlist:feed:v2:{newWishlist.UserId}:1:10");
+                    }
+                    
+                    // If gift was in another wishlist, invalidate that cache too
+                    if (!string.IsNullOrEmpty(oldWishlistIdForAssign) && oldWishlistIdForAssign != assignData.WishlistId)
+                    {
+                        var oldWishlistForAssign = await _dbContext.Wishlists.Find(w => w.Id == oldWishlistIdForAssign).FirstOrDefaultAsync();
+                        if (oldWishlistForAssign != null)
+                        {
+                            await _cache.RemoveAsync($"wishlist:detail:{oldWishlistIdForAssign}:{oldWishlistForAssign.UserId}");
+                            await _cache.RemoveAsync($"wishlist:feed:{oldWishlistForAssign.UserId}:1:10");
+                            await _cache.RemoveAsync($"wishlist:feed:v2:{oldWishlistForAssign.UserId}:1:10");
+                        }
+                    }
+                    
                     return JsonSerializer.Serialize(new { message = "Gift assigned to wishlist successfully" });
                 case "gift.removeFromWishlist":
                     var removeData = JsonSerializer.Deserialize<GiftActionRequestDTO>(payload)!;
                     var giftToRemove = await _dbContext.Gifts.Find(g => g.Id == removeData.GiftId).FirstOrDefaultAsync();
                     if (giftToRemove == null) throw new KeyNotFoundException("Gift not found");
                     
+                    // Check if gift has a wishlist assigned
+                    if (string.IsNullOrEmpty(giftToRemove.WishlistId))
+                    {
+                        throw new InvalidOperationException("Gift is not assigned to any wishlist.");
+                    }
+                    
+                    var wishlistIdToRemove = giftToRemove.WishlistId;
+                    
+                    // Verify that the user owns the wishlist
+                    var targetWishlist = await _dbContext.Wishlists.Find(w => w.Id == wishlistIdToRemove).FirstOrDefaultAsync();
+                    if (targetWishlist == null) throw new KeyNotFoundException("Wishlist not found");
+                    
+                    if (targetWishlist.UserId != removeData.UserId)
+                    {
+                        throw new UnauthorizedAccessException("You are not authorized to remove gifts from this wishlist.");
+                    }
+                    
+                    // Remove gift from wishlist by setting WishlistId to null
                     giftToRemove.WishlistId = null;
                     await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == removeData.GiftId, giftToRemove);
+                    
+                    // Invalidate cache for the wishlist (user is the owner)
+                    await _cache.RemoveAsync($"wishlist:detail:{wishlistIdToRemove}:{removeData.UserId}");
+                    // Invalidate feed cache for the user
+                    await _cache.RemoveAsync($"wishlist:feed:{removeData.UserId}:1:10");
+                    await _cache.RemoveAsync($"wishlist:feed:v2:{removeData.UserId}:1:10");
+                    
                     return JsonSerializer.Serialize(new { message = "Gift removed from wishlist successfully" });
                 default:
                     throw new InvalidOperationException($"Unknown routing key: {routingKey}");
@@ -385,14 +417,14 @@ namespace gift_wishlist_service.Services
     public class CreateWishlistRequestDTO
     {
         public string UserId { get; set; } = string.Empty;
-        public required WishlistApp::WisheraApp.DTO.CreateWishlistDTO CreateDto { get; set; }
+        public required CreateWishlistDTO CreateDto { get; set; }
     }
 
     public class UpdateWishlistRequestDTO
     {
         public string WishlistId { get; set; } = string.Empty;
         public string CurrentUserId { get; set; } = string.Empty;
-        public required WishlistApp::WisheraApp.DTO.UpdateWishlistDTO UpdateDto { get; set; }
+        public required UpdateWishlistDTO UpdateDto { get; set; }
     }
 
     public class UserWishlistsRequestDTO
@@ -420,14 +452,14 @@ namespace gift_wishlist_service.Services
     {
         public string WishlistId { get; set; } = string.Empty;
         public string CurrentUserId { get; set; } = string.Empty;
-        public required WishlistApp::WisheraApp.DTO.CreateCommentDTO CommentDto { get; set; }
+        public required CreateCommentDTO CommentDto { get; set; }
     }
 
     public class UpdateCommentRequestDTO
     {
         public string CommentId { get; set; } = string.Empty;
         public string CurrentUserId { get; set; } = string.Empty;
-        public required WishlistApp::WisheraApp.DTO.UpdateCommentDTO CommentDto { get; set; }
+        public required UpdateCommentDTO CommentDto { get; set; }
     }
 
     public class CommentActionRequestDTO
@@ -454,7 +486,7 @@ namespace gift_wishlist_service.Services
         public decimal Price { get; set; }
         public string Category { get; set; } = string.Empty;
         public string? WishlistId { get; set; }
-        public string? UserId { get; set; }
+        public string UserId { get; set; } = string.Empty;
         public IFormFile? ImageFile { get; set; }
     }
 

@@ -21,83 +21,28 @@ namespace WisheraApp.Services
 
     public class UserServiceClient : IUserServiceClient, IDisposable
     {
-        private readonly IConnection? _connection;
-        private readonly IModel? _channel;
+        private readonly IConnection _connection;
+        private readonly IModel _channel;
         private readonly string _exchange;
-        private readonly HttpClient _httpClient;
-        private readonly string _userServiceUrl;
-        private readonly bool _useRabbitMq;
 
-        public UserServiceClient(IConfiguration configuration, IHttpClientFactory httpClientFactory)
+        public UserServiceClient(IConfiguration configuration)
         {
-            _exchange = "user.exchange";
-            _userServiceUrl = Environment.GetEnvironmentVariable("USER_SERVICE_URL")
-                ?? configuration["UserServiceUrl"]
-                ?? "https://wishera-user-service.onrender.com";
-            _httpClient = httpClientFactory.CreateClient();
-            _httpClient.Timeout = TimeSpan.FromSeconds(30);
-            _httpClient.BaseAddress = new Uri(_userServiceUrl);
-
-            // Support environment variables for Render.com/CloudAMQP
-            var hostName = Environment.GetEnvironmentVariable("RABBITMQ_HOSTNAME") 
-                ?? configuration["RabbitMq:HostName"] 
-                ?? "localhost";
-            var userName = Environment.GetEnvironmentVariable("RABBITMQ_USERNAME") 
-                ?? configuration["RabbitMq:UserName"] 
-                ?? "guest";
-            var password = Environment.GetEnvironmentVariable("RABBITMQ_PASSWORD") 
-                ?? configuration["RabbitMq:Password"] 
-                ?? "guest";
-            
-            // Only use RabbitMQ if credentials are provided (not localhost/guest)
-            _useRabbitMq = hostName != "localhost" || userName != "guest";
-            
-            if (_useRabbitMq)
+            var factory = new ConnectionFactory
             {
-                try
-                {
-                    var virtualHost = Environment.GetEnvironmentVariable("RABBITMQ_VIRTUALHOST") 
-                        ?? configuration["RabbitMq:VirtualHost"] 
-                        ?? "/";
-                    
-                    // On CloudAMQP/Render.com, if VirtualHost is "/", use the username as virtual host
-                    if (virtualHost == "/" && userName != "guest")
-                    {
-                        virtualHost = userName;
-                    }
-
-                    var factory = new ConnectionFactory
-                    {
-                        HostName = hostName,
-                        UserName = userName,
-                        Password = password,
-                        VirtualHost = virtualHost,
-                        Port = int.TryParse(Environment.GetEnvironmentVariable("RABBITMQ_PORT") ?? configuration["RabbitMq:Port"], out var port) ? port : 5672
-                    };
+                HostName = configuration["RabbitMq:HostName"],
+                UserName = configuration["RabbitMq:UserName"],
+                Password = configuration["RabbitMq:Password"],
+                VirtualHost = configuration["RabbitMq:VirtualHost"],
+                Port = int.TryParse(configuration["RabbitMq:Port"], out var port) ? port : 5672
+            };
+            _exchange = "user.exchange";
             _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
             _channel.ExchangeDeclare(_exchange, ExchangeType.Direct, durable: true);
-                    Console.WriteLine("UserServiceClient: RabbitMQ connection established");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"UserServiceClient: Failed to connect to RabbitMQ: {ex.Message}. Falling back to HTTP.");
-                    _useRabbitMq = false;
-                }
-            }
-            else
-            {
-                Console.WriteLine("UserServiceClient: Using HTTP fallback (RabbitMQ not configured)");
-            }
         }
 
         public async Task<UserProfileDTO> GetUserProfileAsync(string userId, string currentUserId)
         {
-            if (!_useRabbitMq || _channel == null)
-            {
-                throw new InvalidOperationException("RabbitMQ is not available. Use HTTP fallback in controller.");
-            }
-            
             var payload = JsonSerializer.Serialize(new { UserId = userId, CurrentUserId = currentUserId });
             var response = await SendRpcAsync("user.profile", payload);
             return JsonSerializer.Deserialize<UserProfileDTO>(response)!;
@@ -157,16 +102,8 @@ namespace WisheraApp.Services
 
         private async Task<string> SendRpcAsync(string routingKey, string payload)
         {
-            if (_channel == null)
-            {
-                throw new InvalidOperationException("RabbitMQ channel is not available");
-            }
-
             var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30 second timeout
 
-            try
-            {
             var replyQueue = _channel.QueueDeclare(queue: string.Empty, durable: false, exclusive: true, autoDelete: true);
             var consumer = new EventingBasicConsumer(_channel);
 
@@ -188,21 +125,7 @@ namespace WisheraApp.Services
             var body = Encoding.UTF8.GetBytes(payload);
             _channel.BasicPublish(exchange: _exchange, routingKey: routingKey, basicProperties: props, body: body);
 
-                // Register timeout cancellation
-                cts.Token.Register(() =>
-                {
-                    if (!tcs.Task.IsCompleted)
-                    {
-                        tcs.TrySetException(new TimeoutException($"RPC call to '{routingKey}' timed out after 30 seconds. The user-service may not be running or RabbitMQ is not configured correctly."));
-                    }
-                });
-
-                return await tcs.Task.WaitAsync(cts.Token);
-            }
-            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
-            {
-                throw new TimeoutException($"RPC call to '{routingKey}' timed out after 30 seconds. The user-service may not be running or RabbitMQ is not configured correctly.");
-            }
+            return await tcs.Task;
         }
 
         public void Dispose()

@@ -1,8 +1,7 @@
-extern alias WishlistApp;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using WishlistApp::WisheraApp.DTO;
+using WisheraApp.DTO;
 using gift_wishlist_service.Services;
 
 namespace gift_wishlist_service.Controllers
@@ -10,12 +9,11 @@ namespace gift_wishlist_service.Controllers
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
-    [Route("api/wishlists")] // Add lowercase route for compatibility
     public class WishlistsController : ControllerBase
     {
-        private readonly WishlistApp::WisheraApp.Services.IWishlistService _wishlistService;
+        private readonly WisheraApp.Services.IWishlistService _wishlistService;
 
-        public WishlistsController(WishlistApp::WisheraApp.Services.IWishlistService wishlistService)
+        public WishlistsController(WisheraApp.Services.IWishlistService wishlistService)
         {
             _wishlistService = wishlistService;
         }
@@ -95,25 +93,12 @@ namespace gift_wishlist_service.Controllers
         [HttpGet("liked")]
         public async Task<ActionResult<List<WishlistFeedDTO>>> GetLikedWishlists([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            try
-            {
-                var currentUserId = GetCurrentUserId();
-                if (string.IsNullOrEmpty(currentUserId))
-                    return Unauthorized(new { message = "User not authenticated. Please log in." });
+            var currentUserId = GetCurrentUserId();
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "User not authenticated" });
 
-                var likedWishlists = await _wishlistService.GetLikedWishlistsAsync(currentUserId, page, pageSize);
-                return Ok(likedWishlists);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error fetching liked wishlists: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
-                return StatusCode(500, new { message = "An error occurred while fetching liked wishlists", details = ex.Message });
-            }
+            var likedWishlists = await _wishlistService.GetLikedWishlistsAsync(currentUserId, page, pageSize);
+            return Ok(likedWishlists);
         }
 
         [HttpGet("{id}")]
@@ -123,19 +108,8 @@ namespace gift_wishlist_service.Controllers
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "User not authenticated" });
 
-            try
-            {
-                var wishlist = await _wishlistService.GetWishlistAsync(id, currentUserId);
-                return Ok(wishlist);
-            }
-            catch (KeyNotFoundException ex)
-            {
-                return NotFound(new { message = ex.Message });
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Unauthorized(new { message = ex.Message });
-            }
+            var wishlist = await _wishlistService.GetWishlistAsync(id, currentUserId);
+            return Ok(wishlist);
         }
 
         [HttpPut("{id}")]

@@ -8,7 +8,7 @@ namespace user_service.Controllers
 {
 	[ApiController]
 	[Authorize]
-	[Route("api/users")] // Use explicit lowercase route only (no [controller] to avoid duplicates)
+	[Route("api/[controller]")]
 	public class UsersController : ControllerBase
 	{
 		private readonly IUserService _userService;
@@ -42,12 +42,6 @@ namespace user_service.Controllers
 			{
 				return BadRequest(new { message = ex.Message });
 			}
-		catch (Exception ex)
-		{
-			Console.WriteLine($"GetById error: {ex.Message}");
-			Console.WriteLine($"Stack trace: {ex.StackTrace}");
-			return StatusCode(500, new { message = "An error occurred while fetching user profile", error = ex.Message });
-		}
 		}
 
 		[HttpGet("profile")]
@@ -167,7 +161,7 @@ namespace user_service.Controllers
 			{
 				return BadRequest(new { message = ex.Message });
 			}
-			catch
+			catch (Exception ex)
 			{
 				// Catch any unexpected exceptions and return a 500 with a generic message
 				return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while searching users." });
@@ -284,7 +278,7 @@ namespace user_service.Controllers
 			{
 				return NotFound(new { message = ex.Message });
 			}
-			catch
+			catch (Exception ex)
 			{
 				return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred while getting suggested users." });
 			}

@@ -3,7 +3,6 @@ using MongoDB.Driver;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Threading;
 using auth_service.DTO;
 using auth_service.Models;
 using auth_service.Services;
@@ -16,8 +15,7 @@ namespace auth_service.Services
         Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto);
         Task<bool> IsEmailUniqueAsync(string email);
         Task<bool> IsUsernameUniqueAsync(string username);
-        Task ForgotPasswordAsync(string email, bool isMobile = false);
-        Task<string> VerifyResetCodeAsync(string email, string code);
+        Task ForgotPasswordAsync(string email);
         Task ResetPasswordAsync(string token, string newPassword);
         Task VerifyEmailAsync(string token);
         Task ResendVerificationEmailAsync(string email);
@@ -110,47 +108,22 @@ namespace auth_service.Services
 
         public async Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto)
         {
-            // Use cancellation token with timeout (15 seconds for login)
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            
-            try
-            {
-                var emailNormalized = loginDto.Email.Trim().ToLowerInvariant();
-                var user = await _dbContext.Users
-                    .Find(u => u.EmailNormalized == emailNormalized)
-                    .FirstOrDefaultAsync(cts.Token)
-                    ?? throw new InvalidOperationException("Invalid email or password");
+            var emailNormalized = loginDto.Email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync()
+                ?? throw new InvalidOperationException("Invalid email or password");
 
-                if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
-                    throw new InvalidOperationException("Invalid email or password");
+            if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
+                throw new InvalidOperationException("Invalid email or password");
 
-                // Check if email is verified
-                if (!user.IsEmailVerified)
-                    throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification link.");
+            // Check if email is verified
+            if (!user.IsEmailVerified)
+                throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification link.");
 
-                // Update last active timestamp (fire and forget if it fails)
-                try
-                {
-                    var update = Builders<User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
-                    await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update, cancellationToken: cts.Token);
-                }
-                catch (Exception ex)
-                {
-                    // Log but don't fail login if update fails
-                    Console.WriteLine($"Failed to update last active timestamp: {ex.Message}");
-                }
+            // Update last active timestamp
+            var update = Builders<User>.Update.Set(u => u.LastActive, DateTime.UtcNow);
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
 
-                return await GenerateAuthResponseAsync(user);
-            }
-            catch (OperationCanceledException)
-            {
-                throw new TimeoutException("Login request timed out. Please try again.");
-            }
-            catch (MongoException ex)
-            {
-                Console.WriteLine($"MongoDB error during login: {ex.Message}");
-                throw new InvalidOperationException("Database connection error. Please try again later.");
-            }
+            return await GenerateAuthResponseAsync(user);
         }
 
         public async Task<bool> IsEmailUniqueAsync(string email)
@@ -165,29 +138,28 @@ namespace auth_service.Services
             return !await _dbContext.Users.Find(u => u.UsernameNormalized == normalized).AnyAsync();
         }
 
-        public async Task ForgotPasswordAsync(string email, bool isMobile = false)
+        public async Task ForgotPasswordAsync(string email)
         {
             var user = await _dbContext.Users.Find(u => u.Email == email).FirstOrDefaultAsync();
             if (user == null)
-                throw new InvalidOperationException("If an account with this email exists, a password reset code will be sent");
+                throw new InvalidOperationException("If an account with this email exists, a password reset link will be sent");
 
-            // Generate a 6-digit reset code
-            var random = new Random();
-            var resetCode = random.Next(100000, 999999).ToString(); // 6-digit code
-            var resetTokenExpiry = DateTime.UtcNow.AddMinutes(15); // Codes expire in 15 minutes
+            // Generate a secure reset token
+            var resetToken = Guid.NewGuid().ToString("N");
+            var resetTokenExpiry = DateTime.UtcNow.AddHours(24);
 
             var update = Builders<User>.Update
-                .Set(u => u.ResetPasswordToken, resetCode) // Store code in token field
+                .Set(u => u.ResetPasswordToken, resetToken)
                 .Set(u => u.ResetPasswordTokenExpiry, resetTokenExpiry);
 
             await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
 
-            Console.WriteLine($"Generated reset code for user {user.Username} ({user.Email}): {resetCode}");
+            Console.WriteLine($"Generated reset token for user {user.Username} ({user.Email})");
 
             try
             {
-                // Send password reset email with code
-                await _emailService.SendPasswordResetEmailAsync(user.Email, resetCode, user.Username, isMobile);
+                // Send password reset email
+                await _emailService.SendPasswordResetEmailAsync(user.Email, resetToken, user.Username);
                 Console.WriteLine($"Password reset email sent successfully to {user.Email}");
             }
             catch (Exception ex)
@@ -195,33 +167,6 @@ namespace auth_service.Services
                 Console.WriteLine($"Failed to send password reset email: {ex.Message}");
                 throw;
             }
-        }
-
-        public async Task<string> VerifyResetCodeAsync(string email, string code)
-        {
-            var user = await _dbContext.Users.Find(u => u.Email == email).FirstOrDefaultAsync();
-            if (user == null)
-                throw new InvalidOperationException("Invalid email or code");
-
-            if (user.ResetPasswordToken != code)
-                throw new InvalidOperationException("Invalid reset code");
-
-            if (user.ResetPasswordTokenExpiry < DateTime.UtcNow)
-                throw new InvalidOperationException("Reset code has expired");
-
-            // Generate a secure token for password reset (after code verification)
-            var resetToken = Guid.NewGuid().ToString("N");
-            var resetTokenExpiry = DateTime.UtcNow.AddHours(1); // Token valid for 1 hour
-
-            var update = Builders<User>.Update
-                .Set(u => u.ResetPasswordToken, resetToken) // Replace code with token
-                .Set(u => u.ResetPasswordTokenExpiry, resetTokenExpiry);
-
-            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
-
-            Console.WriteLine($"Reset code verified for user {user.Username}, generated token");
-
-            return resetToken;
         }
 
         public async Task ResetPasswordAsync(string token, string newPassword)

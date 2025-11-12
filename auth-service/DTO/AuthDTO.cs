@@ -44,4 +44,10 @@ namespace auth_service.DTO
         public string Email { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
     }
+
+    public class VerifyEmailCodeDTO
+    {
+        public string Email { get; set; } = string.Empty;
+        public string Code { get; set; } = string.Empty;
+    }
 }

@@ -35,7 +35,11 @@ namespace auth_service.Controllers
         {
             try
             {
-                var response = await _authService.RegisterAsync(registerDto);
+                // Check if request is from mobile client
+                var isMobile = Request.Headers.ContainsKey("X-Client-Type") && 
+                              Request.Headers["X-Client-Type"].ToString().Equals("mobile", StringComparison.OrdinalIgnoreCase);
+                
+                var response = await _authService.RegisterAsync(registerDto, isMobile);
                 return Ok(response);
             }
             catch (InvalidOperationException ex)
@@ -156,8 +160,48 @@ namespace auth_service.Controllers
         {
             try
             {
-                await _authService.ResendVerificationEmailAsync(dto.Email);
-                return Ok(new { message = "Verification email sent. Please check your inbox." });
+                // Check if request is from mobile client
+                var isMobile = Request.Headers.ContainsKey("X-Client-Type") && 
+                              Request.Headers["X-Client-Type"].ToString().Equals("mobile", StringComparison.OrdinalIgnoreCase);
+                
+                if (isMobile)
+                {
+                    await _authService.ResendVerificationCodeAsync(dto.Email);
+                    return Ok(new { message = "Verification code sent. Please check your inbox." });
+                }
+                else
+                {
+                    await _authService.ResendVerificationEmailAsync(dto.Email);
+                    return Ok(new { message = "Verification email sent. Please check your inbox." });
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("verify-email-code")]
+        public async Task<ActionResult> VerifyEmailCode(VerifyEmailCodeDTO verifyCodeDto)
+        {
+            try
+            {
+                await _authService.VerifyEmailCodeAsync(verifyCodeDto.Email, verifyCodeDto.Code);
+                return Ok(new { message = "Email verified successfully" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("resend-verification-code")]
+        public async Task<ActionResult> ResendVerificationCode([FromBody] ForgotPasswordDTO dto)
+        {
+            try
+            {
+                await _authService.ResendVerificationCodeAsync(dto.Email);
+                return Ok(new { message = "Verification code sent. Please check your inbox." });
             }
             catch (InvalidOperationException ex)
             {

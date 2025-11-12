@@ -11,7 +11,7 @@ namespace auth_service.Services
 {
     public interface IAuthService
     {
-        Task<AuthResponseDTO> RegisterAsync(RegisterDTO registerDto);
+        Task<AuthResponseDTO> RegisterAsync(RegisterDTO registerDto, bool isMobile = false);
         Task<AuthResponseDTO> LoginAsync(LoginDTO loginDto);
         Task<bool> IsEmailUniqueAsync(string email);
         Task<bool> IsUsernameUniqueAsync(string username);
@@ -20,6 +20,8 @@ namespace auth_service.Services
         Task ResetPasswordAsync(string token, string newPassword);
         Task VerifyEmailAsync(string token);
         Task ResendVerificationEmailAsync(string email);
+        Task ResendVerificationCodeAsync(string email);
+        Task VerifyEmailCodeAsync(string email, string code);
         Task DeleteAccountAsync(string userId);
         Task SendLoginConfirmationCodeAsync(string email);
         Task<AuthResponseDTO> VerifyLoginCodeAsync(string email, string code);
@@ -38,7 +40,7 @@ namespace auth_service.Services
             _emailService = emailService;
         }
 
-        public async Task<AuthResponseDTO> RegisterAsync(RegisterDTO registerDto)
+        public async Task<AuthResponseDTO> RegisterAsync(RegisterDTO registerDto, bool isMobile = false)
         {
             var emailNormalized = registerDto.Email.Trim().ToLowerInvariant();
             var usernameNormalized = registerDto.Username.Trim().ToLowerInvariant();
@@ -55,10 +57,6 @@ namespace auth_service.Services
             if (usernameExists)
                 throw new InvalidOperationException("Username is already taken");
 
-            // Generate email verification token
-            var verificationToken = Guid.NewGuid().ToString("N");
-            var verificationTokenExpiry = DateTime.UtcNow.AddDays(7);
-
             var user = new User
             {
                 Username = registerDto.Username,
@@ -68,23 +66,55 @@ namespace auth_service.Services
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDto.Password),
                 CreatedAt = DateTime.UtcNow,
                 LastActive = DateTime.UtcNow,
-                IsEmailVerified = false,
-                EmailVerificationToken = verificationToken,
-                EmailVerificationTokenExpiry = verificationTokenExpiry
+                IsEmailVerified = false
             };
 
-            await _dbContext.Users.InsertOneAsync(user);
+            if (isMobile)
+            {
+                // Generate a 6-digit verification code for mobile
+                var random = new Random();
+                var verificationCode = random.Next(100000, 999999).ToString();
+                var codeExpiry = DateTime.UtcNow.AddMinutes(15);
 
-            // Send verification email
-            try
-            {
-                await _emailService.SendEmailVerificationAsync(user.Email, verificationToken, user.Username);
-                Console.WriteLine($"Email verification sent to {user.Email}");
+                user.EmailVerificationCode = verificationCode;
+                user.EmailVerificationCodeExpiry = codeExpiry;
+
+                await _dbContext.Users.InsertOneAsync(user);
+
+                // Send verification code email
+                try
+                {
+                    await _emailService.SendEmailVerificationCodeAsync(user.Email, verificationCode, user.Username);
+                    Console.WriteLine($"Email verification code sent to {user.Email}");
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but don't fail registration
+                    Console.WriteLine($"Failed to send verification code: {ex.Message}");
+                }
             }
-            catch (Exception ex)
+            else
             {
-                // Log the error but don't fail registration
-                Console.WriteLine($"Failed to send verification email: {ex.Message}");
+                // Generate email verification token for web
+                var verificationToken = Guid.NewGuid().ToString("N");
+                var verificationTokenExpiry = DateTime.UtcNow.AddDays(7);
+
+                user.EmailVerificationToken = verificationToken;
+                user.EmailVerificationTokenExpiry = verificationTokenExpiry;
+
+                await _dbContext.Users.InsertOneAsync(user);
+
+                // Send verification email
+                try
+                {
+                    await _emailService.SendEmailVerificationAsync(user.Email, verificationToken, user.Username);
+                    Console.WriteLine($"Email verification sent to {user.Email}");
+                }
+                catch (Exception ex)
+                {
+                    // Log the error but don't fail registration
+                    Console.WriteLine($"Failed to send verification email: {ex.Message}");
+                }
             }
 
             return await GenerateAuthResponseAsync(user);
@@ -120,7 +150,7 @@ namespace auth_service.Services
 
             // Check if email is verified
             if (!user.IsEmailVerified)
-                throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification link.");
+                throw new InvalidOperationException("Please verify your email address before logging in. Check your inbox for the verification code.");
 
             // For first-time sign-in, require code confirmation
             if (!user.HasCompletedFirstLogin)
@@ -323,7 +353,9 @@ namespace auth_service.Services
 
             var update = Builders<User>.Update
                 .Set(u => u.EmailVerificationToken, verificationToken)
-                .Set(u => u.EmailVerificationTokenExpiry, verificationTokenExpiry);
+                .Set(u => u.EmailVerificationTokenExpiry, verificationTokenExpiry)
+                .Set(u => u.EmailVerificationCode, (string?)null)
+                .Set(u => u.EmailVerificationCodeExpiry, (DateTime?)null);
 
             await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
 
@@ -338,6 +370,66 @@ namespace auth_service.Services
                 Console.WriteLine($"Failed to resend verification email: {ex.Message}");
                 throw;
             }
+        }
+
+        public async Task ResendVerificationCodeAsync(string email)
+        {
+            var emailNormalized = email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync();
+            
+            if (user == null)
+                throw new InvalidOperationException("No account found with this email address");
+
+            if (user.IsEmailVerified)
+                throw new InvalidOperationException("This email address is already verified");
+
+            // Generate a 6-digit verification code
+            var random = new Random();
+            var verificationCode = random.Next(100000, 999999).ToString();
+            var codeExpiry = DateTime.UtcNow.AddMinutes(15);
+
+            var update = Builders<User>.Update
+                .Set(u => u.EmailVerificationCode, verificationCode)
+                .Set(u => u.EmailVerificationCodeExpiry, codeExpiry)
+                .Set(u => u.EmailVerificationToken, (string?)null)
+                .Set(u => u.EmailVerificationTokenExpiry, (DateTime?)null);
+
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
+
+            // Send verification code email
+            try
+            {
+                await _emailService.SendEmailVerificationCodeAsync(user.Email, verificationCode, user.Username);
+                Console.WriteLine($"Verification code resent to {user.Email}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to resend verification code: {ex.Message}");
+                throw;
+            }
+        }
+
+        public async Task VerifyEmailCodeAsync(string email, string code)
+        {
+            var emailNormalized = email.Trim().ToLowerInvariant();
+            var user = await _dbContext.Users.Find(u => u.EmailNormalized == emailNormalized).FirstOrDefaultAsync();
+            if (user == null)
+                throw new InvalidOperationException("Invalid email or code");
+
+            if (string.IsNullOrEmpty(user.EmailVerificationCode) || user.EmailVerificationCode != code)
+                throw new InvalidOperationException("Invalid verification code");
+
+            if (user.EmailVerificationCodeExpiry == null || user.EmailVerificationCodeExpiry < DateTime.UtcNow)
+                throw new InvalidOperationException("Verification code has expired");
+
+            var update = Builders<User>.Update
+                .Set(u => u.IsEmailVerified, true)
+                .Set(u => u.EmailVerificationCode, (string?)null)
+                .Set(u => u.EmailVerificationCodeExpiry, (DateTime?)null)
+                .Set(u => u.EmailVerificationToken, (string?)null)
+                .Set(u => u.EmailVerificationTokenExpiry, (DateTime?)null);
+
+            await _dbContext.Users.UpdateOneAsync(u => u.Id == user.Id, update);
         }
 
         public async Task DeleteAccountAsync(string userId)

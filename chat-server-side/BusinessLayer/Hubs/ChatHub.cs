@@ -216,7 +216,6 @@ namespace BusinessLayer.Hubs
                         var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
                             ? $"{sourceUserId}:{userId}"
                             : $"{userId}:{sourceUserId}";
-                        
                         var doc = new MongoDB.Bson.BsonDocument
                         {
                             { "messageId", messageId },

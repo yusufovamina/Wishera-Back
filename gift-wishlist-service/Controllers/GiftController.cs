@@ -52,7 +52,8 @@ namespace gift_wishlist_service.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetGiftById(string id)
         {
-            var gift = await _giftApiService.GetGiftByIdAsync(id);
+            var userId = GetCurrentUserId(); // May be null if anonymous
+            var gift = await _giftApiService.GetGiftByIdAsync(id, userId);
             return Ok(gift);
         }
 

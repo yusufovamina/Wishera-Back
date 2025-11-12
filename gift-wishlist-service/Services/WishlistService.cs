@@ -119,8 +119,10 @@ namespace gift_wishlist_service.Services
                 Url = null,
                 GiftId = g.Id,
                 IsReserved = !string.IsNullOrEmpty(g.ReservedByUserId),
-                ReservedByUserId = g.ReservedByUserId,
-                ReservedByUsername = g.ReservedByUsername
+                // Show ReservedByUserId only if the current user is the one who reserved it (so they can cancel)
+                // Otherwise hide it to maintain privacy
+                ReservedByUserId = !string.IsNullOrEmpty(g.ReservedByUserId) && g.ReservedByUserId == currentUserId ? g.ReservedByUserId : null,
+                ReservedByUsername = !string.IsNullOrEmpty(g.ReservedByUserId) && g.ReservedByUserId == currentUserId ? g.ReservedByUsername : null
             }).ToList();
 
             // Aggregate likes and comments
@@ -145,7 +147,8 @@ namespace gift_wishlist_service.Services
                 LikeCount = likeCount,
                 CommentCount = commentCount,
                 IsLiked = isLiked,
-                IsOwner = wishlist.UserId == currentUserId
+                IsOwner = wishlist.UserId == currentUserId,
+                IsFollowing = isFollowing
             };
 			}, TimeSpan.FromMinutes(2));
             return result!;

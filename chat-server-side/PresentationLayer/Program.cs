@@ -175,7 +175,42 @@ app.MapGet("/api/chat/history", async (
             }
         }
 
-        return new
+        // Extract replyToMessageId
+        string? replyToMessageId = null;
+        var replyToVal = d.GetValue("replyToMessageId", BsonNull.Value);
+        if (!replyToVal.IsBsonNull && replyToVal.IsString)
+        {
+            replyToMessageId = replyToVal.AsString;
+        }
+
+        // Extract customData (contains messageType, audioUrl, audioDuration)
+        string? messageType = null;
+        string? audioUrl = null;
+        double? audioDuration = null;
+        var customDataVal = d.GetValue("customData", BsonNull.Value);
+        if (customDataVal is BsonDocument customDataDoc)
+        {
+            var messageTypeVal = customDataDoc.GetValue("messageType", BsonNull.Value);
+            if (!messageTypeVal.IsBsonNull && messageTypeVal.IsString)
+            {
+                messageType = messageTypeVal.AsString;
+            }
+
+            var audioUrlVal = customDataDoc.GetValue("audioUrl", BsonNull.Value);
+            if (!audioUrlVal.IsBsonNull && audioUrlVal.IsString)
+            {
+                audioUrl = audioUrlVal.AsString;
+            }
+
+            var audioDurationVal = customDataDoc.GetValue("audioDuration", BsonNull.Value);
+            if (!audioDurationVal.IsBsonNull && audioDurationVal.IsNumeric)
+            {
+                audioDuration = audioDurationVal.ToDouble();
+            }
+        }
+
+        // Build result object
+        var result = new
         {
             id = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
             conversationId = d.GetValue("conversationId", BsonNull.Value).IsBsonNull ? string.Empty : d["conversationId"].AsString,
@@ -183,8 +218,14 @@ app.MapGet("/api/chat/history", async (
             recipientUserId = d.GetValue("recipientUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["recipientUserId"].AsString,
             text = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
             sentAt = sentAtValue,
-            reactions = reactions
+            reactions = reactions,
+            replyToMessageId = replyToMessageId,
+            messageType = messageType,
+            audioUrl = audioUrl,
+            audioDuration = audioDuration
         };
+
+        return result;
     });
 
     return Results.Ok(items);

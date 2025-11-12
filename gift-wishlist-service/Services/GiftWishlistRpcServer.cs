@@ -246,7 +246,7 @@ namespace gift_wishlist_service.Services
                     giftToReserve.ReservedByUserId = reserveData.UserId;
                     giftToReserve.ReservedByUsername = reserveData.Username;
                     await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == reserveData.GiftId, giftToReserve);
-                    return JsonSerializer.Serialize(new { message = "Gift reserved successfully", reservedBy = reserveData.Username });
+                    return JsonSerializer.Serialize(new { message = "Gift reserved successfully" });
                 case "gift.cancelReserve":
                     var cancelReserveData = JsonSerializer.Deserialize<GiftActionRequestDTO>(payload)!;
                     var giftToCancel = await _dbContext.Gifts.Find(g => g.Id == cancelReserveData.GiftId).FirstOrDefaultAsync();
@@ -298,6 +298,16 @@ namespace gift_wishlist_service.Services
                     
                     var gifts = await giftsQuery.ToListAsync();
                     
+                    // Hide reserver identity for all gifts (gift owner should not see who reserved their gifts)
+                    foreach (var giftItem in gifts)
+                    {
+                        if (!string.IsNullOrEmpty(giftItem.ReservedByUserId))
+                        {
+                            giftItem.ReservedByUserId = null;
+                            giftItem.ReservedByUsername = null;
+                        }
+                    }
+                    
                     Console.WriteLine($"Found {gifts.Count} gifts for user {getUserWishlistData.UserId}");
                     foreach (var giftItem in gifts)
                     {
@@ -309,6 +319,14 @@ namespace gift_wishlist_service.Services
                     var getByIdData = JsonSerializer.Deserialize<GiftActionRequestDTO>(payload)!;
                     var giftById = await _dbContext.Gifts.Find(g => g.Id == getByIdData.GiftId).FirstOrDefaultAsync();
                     if (giftById == null) throw new KeyNotFoundException("Gift not found");
+                    
+                    // Hide reserver identity unless the current user is the reserver
+                    if (!string.IsNullOrEmpty(giftById.ReservedByUserId) && giftById.ReservedByUserId != getByIdData.UserId)
+                    {
+                        giftById.ReservedByUserId = null;
+                        giftById.ReservedByUsername = null;
+                    }
+                    
                     return JsonSerializer.Serialize(giftById);
                 case "gift.getShared":
                     var getSharedData = JsonSerializer.Deserialize<GiftActionRequestDTO>(payload)!;
@@ -318,6 +336,17 @@ namespace gift_wishlist_service.Services
                     
                     // Return gifts from those wishlists
                     var sharedGifts = await _dbContext.Gifts.Find(g => g.WishlistId != null && sharedWishlistIds.Contains(g.WishlistId)).ToListAsync();
+                    
+                    // Hide reserver identity for all gifts
+                    foreach (var giftItem in sharedGifts)
+                    {
+                        if (!string.IsNullOrEmpty(giftItem.ReservedByUserId))
+                        {
+                            giftItem.ReservedByUserId = null;
+                            giftItem.ReservedByUsername = null;
+                        }
+                    }
+                    
                     return JsonSerializer.Serialize(sharedGifts);
                 case "gift.uploadImage":
                     var uploadGiftImageData = JsonSerializer.Deserialize<UploadImageRequestDTO>(payload)!;

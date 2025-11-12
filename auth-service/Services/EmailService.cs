@@ -11,6 +11,7 @@ namespace auth_service.Services
         Task SendPasswordResetEmailAsync(string email, string token, string username);
         Task SendPasswordResetCodeAsync(string email, string code, string username);
         Task SendEmailVerificationAsync(string email, string token, string username);
+        Task SendEmailVerificationCodeAsync(string email, string code, string username);
         Task SendLoginConfirmationCodeAsync(string email, string code, string username);
     }
 
@@ -205,6 +206,33 @@ namespace auth_service.Services
                 </html>
             ";
             var textBody = $"Hi {username},\n\nThank you for registering with Wishera!\n\nPlease verify your email address by clicking this link: {verificationLink}\n\nThis verification link will expire in 7 days.\n\nIf you didn't create an account with Wishera, please ignore this email.\n\nBest regards,\nThe Wishera Team";
+
+            await SendEmailAsync(email, subject, htmlBody, textBody);
+        }
+
+        public async Task SendEmailVerificationCodeAsync(string email, string code, string username)
+        {
+            var subject = "Verify Your Wishera Email Address";
+            var htmlBody = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+                    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                        <h1 style='color: #10b981;'>Verify Your Email Address</h1>
+                        <p>Hi {username},</p>
+                        <p>Thank you for registering with Wishera! Please verify your email address using the code below:</p>
+                        <div style='text-align: center; margin: 30px 0;'>
+                            <div style='background-color: #10b981; color: white; padding: 20px; border-radius: 10px; display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 8px;'>
+                                {code}
+                            </div>
+                        </div>
+                        <p>This verification code will expire in 15 minutes.</p>
+                        <p>If you didn't create an account with Wishera, please ignore this email.</p>
+                        <p>Best regards,<br>The Wishera Team</p>
+                    </div>
+                </body>
+                </html>
+            ";
+            var textBody = $"Hi {username},\n\nThank you for registering with Wishera!\n\nYour email verification code is: {code}\n\nThis verification code will expire in 15 minutes.\n\nIf you didn't create an account with Wishera, please ignore this email.\n\nBest regards,\nThe Wishera Team";
 
             await SendEmailAsync(email, subject, htmlBody, textBody);
         }

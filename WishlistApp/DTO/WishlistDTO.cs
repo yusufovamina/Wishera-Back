@@ -95,6 +95,7 @@ namespace WisheraApp.DTO
         public int CommentCount { get; set; }
         public bool IsLiked { get; set; }
         public bool IsOwner { get; set; }
+        public bool IsFollowing { get; set; }
     }
 
     public class WishlistFeedDTO

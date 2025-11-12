@@ -10,7 +10,7 @@ namespace gift_wishlist_service.Services
         Task<object> CreateGiftAsync(string name, decimal price, string category, string? wishlistId, string userId, IFormFile? imageFile);
         Task<object> UpdateGiftAsync(string id, GiftUpdateDto giftDto);
         Task<object> DeleteGiftAsync(string id);
-        Task<Gift> GetGiftByIdAsync(string id);
+        Task<Gift> GetGiftByIdAsync(string id, string? currentUserId = null);
         Task<object> ReserveGiftAsync(string id, string userId, string username);
         Task<object> CancelReservationAsync(string id, string userId);
         Task<List<Gift>> GetReservedGiftsAsync(string userId);
@@ -73,10 +73,18 @@ namespace gift_wishlist_service.Services
             return new { message = "Gift deleted successfully" };
         }
 
-        public async Task<Gift> GetGiftByIdAsync(string id)
+        public async Task<Gift> GetGiftByIdAsync(string id, string? currentUserId = null)
         {
             var gift = await _dbContext.Gifts.Find(g => g.Id == id).FirstOrDefaultAsync();
             if (gift == null) throw new KeyNotFoundException("Gift not found");
+            
+            // Hide reserver identity unless the current user is the reserver
+            if (!string.IsNullOrEmpty(gift.ReservedByUserId) && gift.ReservedByUserId != currentUserId)
+            {
+                gift.ReservedByUserId = null;
+                gift.ReservedByUsername = null;
+            }
+            
             return gift;
         }
 
@@ -115,7 +123,7 @@ namespace gift_wishlist_service.Services
                 }
             }
 
-            return new { message = "Gift reserved successfully", reservedBy = username };
+            return new { message = "Gift reserved successfully" };
         }
 
         public async Task<object> CancelReservationAsync(string id, string userId)
@@ -139,6 +147,33 @@ namespace gift_wishlist_service.Services
             giftToCancel.ReservedByUserId = null;
             giftToCancel.ReservedByUsername = null;
             await _dbContext.Gifts.ReplaceOneAsync(g => g.Id == id, giftToCancel);
+            
+            // Invalidate cache for the wishlist to ensure fresh data
+            if (!string.IsNullOrEmpty(giftToCancel.WishlistId))
+            {
+                try
+                {
+                    var wishlist = await _dbContext.Wishlists.Find(w => w.Id == giftToCancel.WishlistId).FirstOrDefaultAsync();
+                    if (wishlist != null)
+                    {
+                        // Invalidate cache for both the wishlist owner and the person canceling (if different)
+                        await _cache.RemoveAsync($"wishlist:detail:{giftToCancel.WishlistId}:{wishlist.UserId}");
+                        await _cache.RemoveAsync($"wishlist:feed:{wishlist.UserId}:1:10");
+                        await _cache.RemoveAsync($"wishlist:feed:v2:{wishlist.UserId}:1:10");
+                        
+                        // Also invalidate for the person canceling if they're viewing someone else's wishlist
+                        if (wishlist.UserId != userId)
+                        {
+                            await _cache.RemoveAsync($"wishlist:detail:{giftToCancel.WishlistId}:{userId}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't fail the cancel operation
+                    Console.WriteLine($"Failed to invalidate cache after canceling reservation: {ex.Message}");
+                }
+            }
             
             // Delete the gift reserved notification
             if (!string.IsNullOrEmpty(wishlistOwnerId) && wishlistOwnerId != userId)
@@ -202,6 +237,16 @@ namespace gift_wishlist_service.Services
             }
             var gifts = await giftsQuery.ToListAsync();
             
+            // Hide reserver identity for all gifts (gift owner should not see who reserved their gifts)
+            foreach (var gift in gifts)
+            {
+                if (!string.IsNullOrEmpty(gift.ReservedByUserId))
+                {
+                    gift.ReservedByUserId = null;
+                    gift.ReservedByUsername = null;
+                }
+            }
+            
             Console.WriteLine($"Found {gifts.Count} gifts for user {userId}");
             foreach (var gift in gifts)
             {
@@ -218,7 +263,19 @@ namespace gift_wishlist_service.Services
             var wishlistIds = userWishlistsList.Select(w => w.Id).ToList();
             
             // Return gifts from those wishlists
-            return await _dbContext.Gifts.Find(g => g.WishlistId != null && wishlistIds.Contains(g.WishlistId)).ToListAsync();
+            var gifts = await _dbContext.Gifts.Find(g => g.WishlistId != null && wishlistIds.Contains(g.WishlistId)).ToListAsync();
+            
+            // Hide reserver identity for all gifts
+            foreach (var gift in gifts)
+            {
+                if (!string.IsNullOrEmpty(gift.ReservedByUserId))
+                {
+                    gift.ReservedByUserId = null;
+                    gift.ReservedByUsername = null;
+                }
+            }
+            
+            return gifts;
         }
 
         public async Task<string> UploadGiftImageAsync(string id, IFormFile imageFile)

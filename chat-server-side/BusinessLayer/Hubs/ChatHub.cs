@@ -171,10 +171,13 @@ namespace BusinessLayer.Hubs
                     var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
                     if (!string.IsNullOrEmpty(sourceUserId) && !string.IsNullOrEmpty(userId))
                     {
+                        var conversationId = string.CompareOrdinal(sourceUserId, userId) < 0
+                            ? $"{sourceUserId}:{userId}"
+                            : $"{userId}:{sourceUserId}";
                         var doc = new MongoDB.Bson.BsonDocument
                         {
                             { "messageId", messageId },
-                            { "conversationId", string.Join("_", new[] { sourceUserId, userId }.OrderBy(x => x)) },
+                            { "conversationId", conversationId },
                             { "senderUserId", sourceUserId },
                             { "recipientUserId", userId },
                             { "text", message ?? string.Empty },

@@ -232,52 +232,87 @@ namespace BusinessLayer.Hubs
                         // Extract fields from customData and store at top level for easy retrieval
                         if (customData != null && customData.Count > 0)
                         {
+                            Console.WriteLine($"[ChatHub] Processing customData with {customData.Count} fields");
                             var customDataBson = new MongoDB.Bson.BsonDocument();
                             foreach (var kvp in customData)
                             {
+                                Console.WriteLine($"[ChatHub] Processing customData field: {kvp.Key} = {kvp.Value} (type: {kvp.Value?.GetType().Name})");
                                 customDataBson.Add(kvp.Key, MongoDB.Bson.BsonValue.Create(kvp.Value));
                                 
                                 // Extract common fields to top level for easier querying
                                 if (kvp.Key == "messageType" && kvp.Value != null)
                                 {
-                                    doc.Add("messageType", MongoDB.Bson.BsonValue.Create(kvp.Value));
+                                    var messageTypeValue = kvp.Value.ToString();
+                                    doc.Add("messageType", messageTypeValue);
+                                    Console.WriteLine($"[ChatHub] Added messageType to document: {messageTypeValue}");
                                 }
                                 else if (kvp.Key == "audioUrl" && kvp.Value != null)
                                 {
-                                    doc.Add("audioUrl", MongoDB.Bson.BsonValue.Create(kvp.Value));
+                                    var audioUrlValue = kvp.Value.ToString();
+                                    doc.Add("audioUrl", audioUrlValue);
+                                    Console.WriteLine($"[ChatHub] Added audioUrl to document: {audioUrlValue}");
                                 }
                                 else if (kvp.Key == "audioDuration" && kvp.Value != null)
                                 {
                                     // Handle both int and double for duration
+                                    double durationValue = 0;
                                     if (kvp.Value is int intDuration)
                                     {
+                                        durationValue = intDuration;
                                         doc.Add("audioDuration", intDuration);
                                     }
                                     else if (kvp.Value is double doubleDuration)
                                     {
+                                        durationValue = doubleDuration;
                                         doc.Add("audioDuration", doubleDuration);
                                     }
                                     else if (kvp.Value is long longDuration)
                                     {
-                                        doc.Add("audioDuration", (double)longDuration);
+                                        durationValue = (double)longDuration;
+                                        doc.Add("audioDuration", durationValue);
+                                    }
+                                    else if (double.TryParse(kvp.Value.ToString(), out var parsedDuration))
+                                    {
+                                        durationValue = parsedDuration;
+                                        doc.Add("audioDuration", parsedDuration);
                                     }
                                     else
                                     {
                                         doc.Add("audioDuration", MongoDB.Bson.BsonValue.Create(kvp.Value));
                                     }
+                                    Console.WriteLine($"[ChatHub] Added audioDuration to document: {durationValue}");
                                 }
                                 else if (kvp.Key == "imageUrl" && kvp.Value != null)
                                 {
-                                    doc.Add("imageUrl", MongoDB.Bson.BsonValue.Create(kvp.Value));
+                                    var imageUrlValue = kvp.Value.ToString();
+                                    doc.Add("imageUrl", imageUrlValue);
+                                    Console.WriteLine($"[ChatHub] Added imageUrl to document: {imageUrlValue}");
                                 }
                             }
                             // Also store the full customData for completeness
                             doc.Add("customData", customDataBson);
+                            Console.WriteLine($"[ChatHub] Added customData document with {customDataBson.ElementCount} fields");
                         }
                         else
                         {
                             // Default to text message type if no customData
                             doc.Add("messageType", "text");
+                            Console.WriteLine($"[ChatHub] No customData, defaulting to text message type");
+                        }
+                        
+                        // Log the final document structure for debugging
+                        Console.WriteLine($"[ChatHub] Final document fields: {string.Join(", ", doc.Names)}");
+                        if (doc.Contains("messageType"))
+                        {
+                            Console.WriteLine($"[ChatHub] Document messageType: {doc["messageType"]}");
+                        }
+                        if (doc.Contains("audioUrl"))
+                        {
+                            Console.WriteLine($"[ChatHub] Document audioUrl: {doc["audioUrl"]}");
+                        }
+                        if (doc.Contains("audioDuration"))
+                        {
+                            Console.WriteLine($"[ChatHub] Document audioDuration: {doc["audioDuration"]}");
                         }
                         
                         if (!string.IsNullOrEmpty(replyToMessageId))

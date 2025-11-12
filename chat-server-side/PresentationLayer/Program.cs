@@ -175,57 +175,56 @@ app.MapGet("/api/chat/history", async (
             }
         }
 
-        // Extract replyToMessageId
-        string? replyToMessageId = null;
-        var replyToVal = d.GetValue("replyToMessageId", BsonNull.Value);
-        if (!replyToVal.IsBsonNull && replyToVal.IsString)
-        {
-            replyToMessageId = replyToVal.AsString;
-        }
+         // Extract replyToMessageId
+         string? replyToMessageId = null;
+         var replyToVal = d.GetValue("replyToMessageId", BsonNull.Value);
+         if (!replyToVal.IsBsonNull && replyToVal.IsString)
+         {
+             replyToMessageId = replyToVal.AsString;
+         }
 
-        // Extract customData (contains messageType, audioUrl, audioDuration)
-        string? messageType = null;
-        string? audioUrl = null;
-        double? audioDuration = null;
-        var customDataVal = d.GetValue("customData", BsonNull.Value);
-        if (customDataVal is BsonDocument customDataDoc)
-        {
-            var messageTypeVal = customDataDoc.GetValue("messageType", BsonNull.Value);
-            if (!messageTypeVal.IsBsonNull && messageTypeVal.IsString)
-            {
-                messageType = messageTypeVal.AsString;
-            }
+         // Try to get messageType, audioUrl, audioDuration from top level first, then from customData
+         string? messageType = d.GetValue("messageType", BsonNull.Value).IsBsonNull 
+             ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument 
+                 ? "text" 
+                 : (d["customData"].AsBsonDocument.GetValue("messageType", BsonNull.Value).IsBsonNull 
+                     ? "text" 
+                     : d["customData"].AsBsonDocument["messageType"].AsString))
+             : d["messageType"].AsString;
+         
+         string? audioUrl = d.GetValue("audioUrl", BsonNull.Value).IsBsonNull
+             ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
+                 ? null
+                 : (d["customData"].AsBsonDocument.GetValue("audioUrl", BsonNull.Value).IsBsonNull
+                     ? null
+                     : d["customData"].AsBsonDocument["audioUrl"].AsString))
+             : d["audioUrl"].AsString;
+         
+         double? audioDuration = d.GetValue("audioDuration", BsonNull.Value).IsBsonNull
+             ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
+                 ? (double?)null
+                 : (d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value).IsBsonNull
+                     ? (double?)null
+                     : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
+             : d["audioDuration"].AsDouble;
 
-            var audioUrlVal = customDataDoc.GetValue("audioUrl", BsonNull.Value);
-            if (!audioUrlVal.IsBsonNull && audioUrlVal.IsString)
-            {
-                audioUrl = audioUrlVal.AsString;
-            }
+         // Build result object
+         var result = new
+         {
+             id = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
+             conversationId = d.GetValue("conversationId", BsonNull.Value).IsBsonNull ? string.Empty : d["conversationId"].AsString,
+             senderUserId = d.GetValue("senderUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["senderUserId"].AsString,
+             recipientUserId = d.GetValue("recipientUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["recipientUserId"].AsString,
+             text = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
+             sentAt = sentAtValue,
+             reactions = reactions,
+             replyToMessageId = replyToMessageId,
+             messageType = messageType,
+             audioUrl = audioUrl,
+             audioDuration = audioDuration
+         };
 
-            var audioDurationVal = customDataDoc.GetValue("audioDuration", BsonNull.Value);
-            if (!audioDurationVal.IsBsonNull && audioDurationVal.IsNumeric)
-            {
-                audioDuration = audioDurationVal.ToDouble();
-            }
-        }
-
-        // Build result object
-        var result = new
-        {
-            id = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
-            conversationId = d.GetValue("conversationId", BsonNull.Value).IsBsonNull ? string.Empty : d["conversationId"].AsString,
-            senderUserId = d.GetValue("senderUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["senderUserId"].AsString,
-            recipientUserId = d.GetValue("recipientUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["recipientUserId"].AsString,
-            text = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
-            sentAt = sentAtValue,
-            reactions = reactions,
-            replyToMessageId = replyToMessageId,
-            messageType = messageType,
-            audioUrl = audioUrl,
-            audioDuration = audioDuration
-        };
-
-        return result;
+         return result;
     });
 
     return Results.Ok(items);
@@ -315,6 +314,44 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
             }
         }
 
+        // Extract messageType, audioUrl, audioDuration from top level first, then from customData
+        var messageTypeVal = d.GetValue("messageType", BsonNull.Value);
+        var audioUrlVal = d.GetValue("audioUrl", BsonNull.Value);
+        var audioDurationVal = d.GetValue("audioDuration", BsonNull.Value);
+        
+        string? messageType = messageTypeVal.IsBsonNull 
+            ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument 
+                ? "text" 
+                : (d["customData"].AsBsonDocument.GetValue("messageType", BsonNull.Value).IsBsonNull 
+                    ? "text" 
+                    : d["customData"].AsBsonDocument["messageType"].AsString))
+            : messageTypeVal.AsString;
+        
+        string? audioUrl = audioUrlVal.IsBsonNull
+            ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
+                ? null
+                : (d["customData"].AsBsonDocument.GetValue("audioUrl", BsonNull.Value).IsBsonNull
+                    ? null
+                    : d["customData"].AsBsonDocument["audioUrl"].AsString))
+            : audioUrlVal.AsString;
+        
+        double? audioDuration = audioDurationVal.IsBsonNull
+            ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
+                ? (double?)null
+                : (d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value).IsBsonNull
+                    ? (double?)null
+                    : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
+            : audioDurationVal.AsDouble;
+        
+        // Log voice messages for debugging
+        if (messageType == "voice")
+        {
+            Console.WriteLine($"[Program] Voice message retrieved - ID: {d.GetValue("messageId", BsonNull.Value)}, audioUrl: {audioUrl ?? "null"}, audioDuration: {audioDuration?.ToString() ?? "null"}");
+        }
+        
+        var imageUrl = d.GetValue("imageUrl", BsonNull.Value).IsBsonNull ? null : d["imageUrl"].AsString;
+        var replyToMessageId = d.GetValue("replyToMessageId", BsonNull.Value).IsBsonNull ? null : d["replyToMessageId"].AsString;
+        
         return new
         {
             id = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
@@ -327,30 +364,11 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
             message = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
             createdAt = sentAtValue.ToString("O"), // ISO 8601 format string
             sentAt = sentAtValue.ToString("O"), // ISO 8601 format string
-            // Try to get messageType, audioUrl, audioDuration from top level first, then from customData
-            messageType = d.GetValue("messageType", BsonNull.Value).IsBsonNull 
-                ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument 
-                    ? "text" 
-                    : (d["customData"].AsBsonDocument.GetValue("messageType", BsonNull.Value).IsBsonNull 
-                        ? "text" 
-                        : d["customData"].AsBsonDocument["messageType"].AsString))
-                : d["messageType"].AsString,
-            audioUrl = d.GetValue("audioUrl", BsonNull.Value).IsBsonNull
-                ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
-                    ? null
-                    : (d["customData"].AsBsonDocument.GetValue("audioUrl", BsonNull.Value).IsBsonNull
-                        ? null
-                        : d["customData"].AsBsonDocument["audioUrl"].AsString))
-                : d["audioUrl"].AsString,
-            audioDuration = d.GetValue("audioDuration", BsonNull.Value).IsBsonNull
-                ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
-                    ? (double?)null
-                    : (d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value).IsBsonNull
-                        ? (double?)null
-                        : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
-                : d["audioDuration"].AsDouble,
-            imageUrl = d.GetValue("imageUrl", BsonNull.Value).IsBsonNull ? null : d["imageUrl"].AsString,
-            replyToMessageId = d.GetValue("replyToMessageId", BsonNull.Value).IsBsonNull ? null : d["replyToMessageId"].AsString,
+            messageType = messageType,
+            audioUrl = audioUrl,
+            audioDuration = audioDuration,
+            imageUrl = imageUrl,
+            replyToMessageId = replyToMessageId,
             reactions = reactions
         };
     });

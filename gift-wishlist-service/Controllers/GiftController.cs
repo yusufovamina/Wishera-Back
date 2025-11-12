@@ -63,8 +63,27 @@ namespace gift_wishlist_service.Controllers
             var username = GetUsername();
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(username))
                 return Unauthorized(new { message = "User information is missing" });
-            var result = await _giftApiService.ReserveGiftAsync(id, userId, username);
-            return Ok(result);
+            
+            try
+            {
+                var result = await _giftApiService.ReserveGiftAsync(id, userId, username);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Gift is already reserved
+                return BadRequest(new { message = ex.Message, error = "Gift is already reserved!" });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                // Gift not found
+                return NotFound(new { message = ex.Message, error = "Gift not found" });
+            }
+            catch (Exception ex)
+            {
+                // Other errors
+                return StatusCode(500, new { message = "An error occurred while reserving the gift", error = ex.Message });
+            }
         }
 
         [HttpGet("reserved")]

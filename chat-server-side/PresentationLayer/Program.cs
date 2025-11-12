@@ -49,10 +49,13 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddCors(c =>
 {
     c.AddDefaultPolicy(options =>
+    {
+        // SignalR requires AllowCredentials, which cannot be used with AllowAnyOrigin
+        // So we must specify origins even in development
         options.WithOrigins(
             "http://localhost:3000",      // Web frontend
             "http://localhost:3001",      // Web frontend alt
-            "http://localhost:8081",      // React Native Metro bundler
+            "http://localhost:8081",      // React Native Metro bundler / Expo web
             "http://localhost:19000",     // Expo development
             "http://localhost:19006",     // Expo tunnel
             "http://127.0.0.1:3000",      // iOS simulator web
@@ -62,7 +65,8 @@ builder.Services.AddCors(c =>
         )
         .AllowAnyMethod()
         .AllowAnyHeader()
-        .AllowCredentials());
+        .AllowCredentials();
+    });
 });
 
 
@@ -84,6 +88,7 @@ app.UseStaticFiles();
 
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 
+// Map SignalR hub - must be before other routes
 app.MapHub<ChatHub>("/chat");
 
 // Minimal history API backed by Mongo used by ChatHub
@@ -178,6 +183,133 @@ app.MapGet("/api/chat/history", async (
             recipientUserId = d.GetValue("recipientUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["recipientUserId"].AsString,
             text = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
             sentAt = sentAtValue,
+            reactions = reactions
+        };
+    });
+
+    return Results.Ok(items);
+});
+
+// Alternative history endpoint with path parameters (for mobile app compatibility)
+app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    string userId,
+    string peerUserId,
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 50) =>
+{
+    if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(peerUserId))
+    {
+        return Results.BadRequest(new { message = "userId and peerUserId are required" });
+    }
+    var a = userId;
+    var b = peerUserId;
+    var conversationId = string.CompareOrdinal(a, b) < 0 ? $"{a}:{b}" : $"{b}:{a}";
+
+    var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+    var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+    var db = mongoClient.GetDatabase(dbName);
+    var collection = db.GetCollection<BsonDocument>(collectionName);
+
+    var filter = Builders<BsonDocument>.Filter.Eq("conversationId", conversationId);
+    var cursor = await collection.Find(filter)
+        .Sort(Builders<BsonDocument>.Sort.Ascending("sentAt"))
+        .Skip(Math.Max(0, page - 1) * Math.Max(1, pageSize))
+        .Limit(Math.Max(1, pageSize))
+        .ToListAsync();
+
+    var items = cursor.Select(d =>
+    {
+        var sentVal = d.GetValue("sentAt", BsonNull.Value);
+        DateTimeOffset sentAtValue;
+        if (sentVal is BsonDateTime bdt)
+        {
+            sentAtValue = bdt.ToUniversalTime();
+        }
+        else if (sentVal.IsString && DateTimeOffset.TryParse(sentVal.AsString, out var parsed))
+        {
+            sentAtValue = parsed.ToUniversalTime();
+        }
+        else
+        {
+            sentAtValue = DateTimeOffset.MinValue;
+        }
+
+        // Extract reactions as emoji -> [userIds]
+        Dictionary<string, string[]> reactions = new();
+        var reactionsVal = d.GetValue("reactions", BsonNull.Value);
+        if (reactionsVal is BsonDocument reactionsDoc)
+        {
+            foreach (var emojiEl in reactionsDoc.Elements)
+            {
+                var emoji = emojiEl.Name;
+                if (emojiEl.Value is BsonDocument usersDoc)
+                {
+                    var users = usersDoc.Elements
+                        .Where(e => e.Value.IsBoolean && e.Value.AsBoolean)
+                        .Select(e => e.Name)
+                        .ToArray();
+                    reactions[emoji] = users;
+                }
+            }
+        }
+        else if (reactionsVal is BsonArray reactionsArr)
+        {
+            // Legacy shape: [{ userId, emoji }]
+            foreach (var el in reactionsArr)
+            {
+                if (el is BsonDocument rd)
+                {
+                    var emoji = rd.GetValue("emoji", BsonNull.Value).IsBsonNull ? null : rd["emoji"].AsString;
+                    var userId = rd.GetValue("userId", BsonNull.Value).IsBsonNull ? null : rd["userId"].AsString;
+                    if (!string.IsNullOrEmpty(emoji) && !string.IsNullOrEmpty(userId))
+                    {
+                        if (!reactions.ContainsKey(emoji)) reactions[emoji] = Array.Empty<string>();
+                        var list = reactions[emoji].ToList();
+                        if (!list.Contains(userId)) list.Add(userId);
+                        reactions[emoji] = list.ToArray();
+                    }
+                }
+            }
+        }
+
+        return new
+        {
+            id = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
+            conversationId = d.GetValue("conversationId", BsonNull.Value).IsBsonNull ? string.Empty : d["conversationId"].AsString,
+            userId = d.GetValue("senderUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["senderUserId"].AsString,
+            senderId = d.GetValue("senderUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["senderUserId"].AsString,
+            username = d.GetValue("senderName", BsonNull.Value).IsBsonNull ? string.Empty : d["senderName"].AsString,
+            senderName = d.GetValue("senderName", BsonNull.Value).IsBsonNull ? string.Empty : d["senderName"].AsString,
+            text = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
+            message = d.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : d["text"].AsString,
+            createdAt = sentAtValue.ToString("O"), // ISO 8601 format string
+            sentAt = sentAtValue.ToString("O"), // ISO 8601 format string
+            // Try to get messageType, audioUrl, audioDuration from top level first, then from customData
+            messageType = d.GetValue("messageType", BsonNull.Value).IsBsonNull 
+                ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument 
+                    ? "text" 
+                    : (d["customData"].AsBsonDocument.GetValue("messageType", BsonNull.Value).IsBsonNull 
+                        ? "text" 
+                        : d["customData"].AsBsonDocument["messageType"].AsString))
+                : d["messageType"].AsString,
+            audioUrl = d.GetValue("audioUrl", BsonNull.Value).IsBsonNull
+                ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
+                    ? null
+                    : (d["customData"].AsBsonDocument.GetValue("audioUrl", BsonNull.Value).IsBsonNull
+                        ? null
+                        : d["customData"].AsBsonDocument["audioUrl"].AsString))
+                : d["audioUrl"].AsString,
+            audioDuration = d.GetValue("audioDuration", BsonNull.Value).IsBsonNull
+                ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
+                    ? (double?)null
+                    : (d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value).IsBsonNull
+                        ? (double?)null
+                        : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
+                : d["audioDuration"].AsDouble,
+            imageUrl = d.GetValue("imageUrl", BsonNull.Value).IsBsonNull ? null : d["imageUrl"].AsString,
+            replyToMessageId = d.GetValue("replyToMessageId", BsonNull.Value).IsBsonNull ? null : d["replyToMessageId"].AsString,
             reactions = reactions
         };
     });
@@ -463,7 +595,9 @@ app.MapPost("/api/chat/upload-media", async (HttpRequest request) =>
             };
             var res = await cloudinary.UploadAsync(uploadParams);
             if (res.Error != null) return Results.Problem(res.Error.Message, statusCode: 500);
-            return Results.Ok(new { url = res.SecureUrl.ToString(), mediaType = "audio" });
+            var audioUrl = res.SecureUrl.ToString();
+            // Return both url and audioUrl for compatibility
+            return Results.Ok(new { url = audioUrl, audioUrl = audioUrl, mediaType = "audio" });
         }
     }
     catch (Exception ex)

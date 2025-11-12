@@ -52,7 +52,8 @@ namespace gift_wishlist_service.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> GetGiftById(string id)
         {
-            var gift = await _giftApiService.GetGiftByIdAsync(id);
+            var userId = GetCurrentUserId(); // May be null if anonymous
+            var gift = await _giftApiService.GetGiftByIdAsync(id, userId);
             return Ok(gift);
         }
 
@@ -63,8 +64,20 @@ namespace gift_wishlist_service.Controllers
             var username = GetUsername();
             if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(username))
                 return Unauthorized(new { message = "User information is missing" });
-            var result = await _giftApiService.ReserveGiftAsync(id, userId, username);
-            return Ok(result);
+            
+            try
+            {
+                var result = await _giftApiService.ReserveGiftAsync(id, userId, username);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
         }
 
         [HttpGet("reserved")]

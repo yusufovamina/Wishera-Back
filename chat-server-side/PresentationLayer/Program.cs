@@ -208,6 +208,20 @@ app.MapGet("/api/chat/history", async (
                      : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
              : d["audioDuration"].AsDouble;
 
+         // Determine read status: message is read if read field is true OR readAt exists and is not null
+         var readVal = d.GetValue("read", BsonNull.Value);
+         var readAtVal = d.GetValue("readAt", BsonNull.Value);
+         bool isRead = false;
+         if (!readVal.IsBsonNull && readVal.IsBoolean)
+         {
+             isRead = readVal.AsBoolean;
+         }
+         else if (!readAtVal.IsBsonNull)
+         {
+             // If readAt exists, consider the message as read
+             isRead = true;
+         }
+
          // Build result object
          var result = new
          {
@@ -221,7 +235,9 @@ app.MapGet("/api/chat/history", async (
              replyToMessageId = replyToMessageId,
              messageType = messageType,
              audioUrl = audioUrl,
-             audioDuration = audioDuration
+             audioDuration = audioDuration,
+             read = isRead,
+             isRead = isRead // Include both for compatibility
          };
 
          return result;
@@ -352,6 +368,32 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
         var imageUrl = d.GetValue("imageUrl", BsonNull.Value).IsBsonNull ? null : d["imageUrl"].AsString;
         var replyToMessageId = d.GetValue("replyToMessageId", BsonNull.Value).IsBsonNull ? null : d["replyToMessageId"].AsString;
         
+        // Determine read status from the requesting user's perspective
+        // If the requesting user is the sender, the message is always "read" from their perspective
+        // If the requesting user is the recipient, check if read field is true OR readAt exists
+        var senderUserId = d.GetValue("senderUserId", BsonNull.Value).IsBsonNull ? string.Empty : d["senderUserId"].AsString;
+        bool isRead = false;
+        if (senderUserId == userId)
+        {
+            // User sent this message, so it's always "read" from their perspective
+            isRead = true;
+        }
+        else
+        {
+            // User received this message, check if they've read it
+            var readVal = d.GetValue("read", BsonNull.Value);
+            var readAtVal = d.GetValue("readAt", BsonNull.Value);
+            if (!readVal.IsBsonNull && readVal.IsBoolean)
+            {
+                isRead = readVal.AsBoolean;
+            }
+            else if (!readAtVal.IsBsonNull)
+            {
+                // If readAt exists, consider the message as read
+                isRead = true;
+            }
+        }
+        
         return new
         {
             id = d.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : d["messageId"].AsString,
@@ -369,7 +411,9 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
             audioDuration = audioDuration,
             imageUrl = imageUrl,
             replyToMessageId = replyToMessageId,
-            reactions = reactions
+            reactions = reactions,
+            read = isRead,
+            isRead = isRead // Include both for compatibility
         };
     });
 

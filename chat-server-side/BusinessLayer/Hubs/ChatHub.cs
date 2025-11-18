@@ -13,6 +13,7 @@ namespace BusinessLayer.Hubs
         private readonly IMongoClient mongoClient;
         private readonly IConfiguration configuration;
         private static readonly ConcurrentDictionary<string, string> activeUsers = new();
+        private static readonly ConcurrentDictionary<string, (string callerUserId, string calleeUserId)> activeCalls = new();
 
         public ChatHub(
             IHttpContextAccessor httpContextAccessor,
@@ -592,9 +593,13 @@ namespace BusinessLayer.Hubs
                     MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("senderUserId", peerUserId),
                     MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.In("messageId", messageIds.ToArray())
                 );
-                var update = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Update.Set("readAt", DateTimeOffset.UtcNow);
+                // Set both readAt timestamp and read boolean field for persistence
+                var update = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Update
+                    .Set("readAt", DateTimeOffset.UtcNow)
+                    .Set("read", true);
                 var result = await collection.UpdateManyAsync(filter, update);
                 var count = (int)result.ModifiedCount;
+                Console.WriteLine($"[ChatHub] MarkMessagesRead: Marked {count} messages as read for user {userId} from peer {peerUserId}");
                 if (count > 0)
                 {
                     if (activeUsers.ContainsKey(peerUserId))
@@ -608,7 +613,11 @@ namespace BusinessLayer.Hubs
                 }
                 return count;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ChatHub] MarkMessagesRead error: {ex.Message}");
+                Console.WriteLine($"[ChatHub] Stack trace: {ex.StackTrace}");
+            }
             return 0;
         }
 
@@ -773,6 +782,10 @@ namespace BusinessLayer.Hubs
             if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
             
             var finalCallId = callId;
+            
+            // Store call state for later use in SendCallSignal
+            activeCalls.AddOrUpdate(finalCallId, (callerUserId, calleeUserId), (_, __) => (callerUserId, calleeUserId));
+            
             var payload = new { 
                 callerUserId, 
                 calleeUserId, 
@@ -822,6 +835,9 @@ namespace BusinessLayer.Hubs
             var calleeUserId = GetUserIdFromQuery();
             if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
             
+            // Remove call state when call is rejected
+            activeCalls.TryRemove(callId, out _);
+            
             var payload = new { 
                 callerUserId, 
                 calleeUserId, 
@@ -845,6 +861,9 @@ namespace BusinessLayer.Hubs
         {
             var currentUserId = GetUserIdFromQuery();
             if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
+            
+            // Remove call state when call ends
+            activeCalls.TryRemove(callId, out _);
             
             var payload = new { 
                 callerUserId = currentUserId, 
@@ -870,9 +889,49 @@ namespace BusinessLayer.Hubs
             var currentUserId = GetUserIdFromQuery();
             if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
             
+            // Determine caller and callee based on signal type and call state:
+            // - "offer": currentUserId is the caller (sending offer to callee)
+            // - "answer": currentUserId is the callee (sending answer to caller), so otherUserId is the caller
+            // - "ice-candidate": Use stored call state to determine caller/callee
+            string callerUserId;
+            string calleeUserId;
+            
+            if (signalType == "offer")
+            {
+                // Offer is sent by caller to callee
+                callerUserId = currentUserId;
+                calleeUserId = otherUserId;
+            }
+            else if (signalType == "answer")
+            {
+                // Answer is sent by callee to caller
+                callerUserId = otherUserId; // The recipient of answer is the original caller
+                calleeUserId = currentUserId; // The sender of answer is the callee
+            }
+            else // "ice-candidate"
+            {
+                // For ICE candidates, use stored call state to determine caller/callee
+                if (activeCalls.TryGetValue(callId, out var callState))
+                {
+                    callerUserId = callState.callerUserId;
+                    calleeUserId = callState.calleeUserId;
+                }
+                else
+                {
+                    // Fallback: if we don't have call state, infer from direction
+                    // Caller sends ICE to callee (otherUserId is callee)
+                    // Callee sends ICE to caller (otherUserId is caller)
+                    // Since callee typically sends to caller (data.callerUserId), assume otherUserId is caller
+                    // This is not perfect but better than nothing
+                    callerUserId = otherUserId;
+                    calleeUserId = currentUserId;
+                    Console.WriteLine($"[ChatHub] SendCallSignal: No call state found for callId {callId}, using fallback");
+                }
+            }
+            
             var payload = new { 
-                callerUserId = currentUserId, 
-                calleeUserId = otherUserId, 
+                callerUserId, 
+                calleeUserId, 
                 callId,
                 signalType, // "offer", "answer", "ice-candidate"
                 signalData,
@@ -883,6 +942,11 @@ namespace BusinessLayer.Hubs
             if (activeUsers.ContainsKey(otherUserId))
             {
                 await Clients.Client(activeUsers[otherUserId]).SendAsync("callsignal", payload);
+                Console.WriteLine($"[ChatHub] SendCallSignal: Sent {signalType} signal from {currentUserId} to {otherUserId} for call {callId}");
+            }
+            else
+            {
+                Console.WriteLine($"[ChatHub] SendCallSignal: User {otherUserId} is not online. Active users: {string.Join(", ", activeUsers.Keys)}");
             }
         }
     }

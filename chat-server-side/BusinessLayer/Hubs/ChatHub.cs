@@ -39,7 +39,7 @@ namespace BusinessLayer.Hubs
             {
                 var username = GetUsernameFromQuery();
                 var messageId = Guid.NewGuid().ToString();
-                var sentAt = DateTimeOffset.UtcNow;
+                var sentAt = DateTimeOffset.UtcNow.ToString("O"); // ISO 8601 format with timezone
                 if (activeUsers.ContainsKey(userId))
                 {
                     await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
@@ -54,7 +54,7 @@ namespace BusinessLayer.Hubs
             {
                 var username = GetUsernameFromQuery();
                 var messageId = Guid.NewGuid().ToString();
-                var sentAt = DateTimeOffset.UtcNow;
+                var sentAt = DateTimeOffset.UtcNow.ToString("O"); // ISO 8601 format with timezone
                 await Clients.Client(activeUsers[userId]).SendAsync("ReceiveMessage", new { id = messageId, senderId = sourceUserId, text = message, sentAt }, username);
             }
             // Persist to Mongo if configured
@@ -98,7 +98,7 @@ namespace BusinessLayer.Hubs
             var sourceUserId = GetUserIdFromQuery();
             Console.WriteLine($"[ChatHub] SendMessageToUserWithMeta called: sourceUserId={sourceUserId}, userId={userId}, message={message?.Substring(0, Math.Min(50, message?.Length ?? 0))}");
             var messageId = clientMessageId ?? Guid.NewGuid().ToString();
-            var sentAt = DateTimeOffset.UtcNow;
+            var sentAt = DateTimeOffset.UtcNow.ToString("O"); // ISO 8601 format with timezone
             // Handle special pin/unpin hint messages: broadcast to both participants and DO NOT persist
             var isPinHint = !string.IsNullOrEmpty(message) && (message.StartsWith("[[pin]]:") || message.StartsWith("[[unpin]]:"));
             if (isPinHint)
@@ -188,7 +188,7 @@ namespace BusinessLayer.Hubs
         {
             var sourceUserId = GetUserIdFromQuery();
             var messageId = clientMessageId ?? Guid.NewGuid().ToString();
-            var sentAt = DateTimeOffset.UtcNow;
+            var sentAt = DateTimeOffset.UtcNow.ToString("O"); // ISO 8601 format with timezone
             var username = GetUsernameFromQuery();
             
             // Send to recipient
@@ -791,7 +791,7 @@ namespace BusinessLayer.Hubs
                 calleeUserId, 
                 callType, // "audio" or "video"
                 callId = finalCallId,
-                timestamp = DateTimeOffset.UtcNow
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
             };
 
             // Send to both participants if they're online
@@ -815,7 +815,7 @@ namespace BusinessLayer.Hubs
                 callerUserId, 
                 calleeUserId, 
                 callId,
-                timestamp = DateTimeOffset.UtcNow
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
             };
 
             // Send to both participants if they're online
@@ -842,7 +842,7 @@ namespace BusinessLayer.Hubs
                 callerUserId, 
                 calleeUserId, 
                 callId,
-                timestamp = DateTimeOffset.UtcNow
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
             };
 
             // Send to both participants if they're online
@@ -869,7 +869,7 @@ namespace BusinessLayer.Hubs
                 callerUserId = currentUserId, 
                 calleeUserId = otherUserId, 
                 callId,
-                timestamp = DateTimeOffset.UtcNow
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
             };
 
             // Send to both participants if they're online
@@ -935,7 +935,7 @@ namespace BusinessLayer.Hubs
                 callId,
                 signalType, // "offer", "answer", "ice-candidate"
                 signalData,
-                timestamp = DateTimeOffset.UtcNow
+                timestamp = DateTimeOffset.UtcNow.ToString("O")
             };
 
             // Send to the other participant if they're online

@@ -13,7 +13,7 @@ namespace BusinessLayer.Hubs
         private readonly IMongoClient mongoClient;
         private readonly IConfiguration configuration;
         private static readonly ConcurrentDictionary<string, string> activeUsers = new();
-        private static readonly ConcurrentDictionary<string, (string callerUserId, string calleeUserId)> activeCalls = new();
+        private static readonly ConcurrentDictionary<string, (string callerUserId, string calleeUserId, string callType)> activeCalls = new();
 
         public ChatHub(
             IHttpContextAccessor httpContextAccessor,
@@ -774,6 +774,44 @@ namespace BusinessLayer.Hubs
             return httpContext?.Request?.Query["username"].ToString();
         }
 
+        // Helper method to save call history as a message
+        private async Task SaveCallHistoryMessage(string userA, string userB, string callType, string callStatus, int? duration = null)
+        {
+            try
+            {
+                var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+                var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+                var db = mongoClient.GetDatabase(dbName);
+                var collection = db.GetCollection<MongoDB.Bson.BsonDocument>(collectionName);
+
+                var conversationId = string.CompareOrdinal(userA, userB) < 0 ? $"{userA}:{userB}" : $"{userB}:{userA}";
+                var messageId = $"call_{Guid.NewGuid():N}";
+                var now = DateTimeOffset.UtcNow;
+
+                var message = new MongoDB.Bson.BsonDocument
+                {
+                    { "messageId", messageId },
+                    { "conversationId", conversationId },
+                    { "senderUserId", userA },
+                    { "recipientUserId", userB },
+                    { "text", "" }, // Empty text for call messages
+                    { "messageType", "call" },
+                    { "sentAt", now.ToString("O") },
+                    { "callType", callType }, // "audio" or "video"
+                    { "callStatus", callStatus }, // "missed", "answered", "rejected", "ended"
+                    { "callDuration", duration ?? 0 },
+                    { "read", false }
+                };
+
+                await collection.InsertOneAsync(message);
+                Console.WriteLine($"[ChatHub] Saved call history: {callStatus} {callType} call between {userA} and {userB}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ChatHub] Error saving call history: {ex.Message}");
+            }
+        }
+
         // Call signaling methods
         [HubMethodName("InitiateCall")]
         public async Task InitiateCall(string calleeUserId, string callType, string callId)
@@ -784,7 +822,7 @@ namespace BusinessLayer.Hubs
             var finalCallId = callId;
             
             // Store call state for later use in SendCallSignal
-            activeCalls.AddOrUpdate(finalCallId, (callerUserId, calleeUserId), (_, __) => (callerUserId, calleeUserId));
+            activeCalls.AddOrUpdate(finalCallId, (callerUserId, calleeUserId, callType), (_, __) => (callerUserId, calleeUserId, callType));
             
             var payload = new { 
                 callerUserId, 
@@ -811,10 +849,21 @@ namespace BusinessLayer.Hubs
             var calleeUserId = GetUserIdFromQuery();
             if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
             
+            // Get call type from activeCalls if available
+            string callType = "audio"; // default
+            if (activeCalls.TryGetValue(callId, out var callState))
+            {
+                callType = callState.callType;
+            }
+            
+            // Save call history: answered call
+            await SaveCallHistoryMessage(callerUserId, calleeUserId, callType, "answered");
+            
             var payload = new { 
                 callerUserId, 
                 calleeUserId, 
                 callId,
+                callType, // Include call type so frontend knows if it's video or audio
                 timestamp = DateTimeOffset.UtcNow.ToString("O")
             };
 
@@ -835,8 +884,18 @@ namespace BusinessLayer.Hubs
             var calleeUserId = GetUserIdFromQuery();
             if (string.IsNullOrEmpty(callerUserId) || string.IsNullOrEmpty(calleeUserId)) return;
             
+            // Get call type before removing from activeCalls
+            string callType = "audio";
+            if (activeCalls.TryGetValue(callId, out var callState))
+            {
+                callType = callState.callType;
+            }
+            
             // Remove call state when call is rejected
             activeCalls.TryRemove(callId, out _);
+            
+            // Save call history: rejected call
+            await SaveCallHistoryMessage(callerUserId, calleeUserId, callType, "rejected");
             
             var payload = new { 
                 callerUserId, 
@@ -857,13 +916,23 @@ namespace BusinessLayer.Hubs
         }
 
         [HubMethodName("EndCall")]
-        public async Task EndCall(string otherUserId, string callId)
+        public async Task EndCall(string otherUserId, string callId, int? duration = null)
         {
             var currentUserId = GetUserIdFromQuery();
             if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrEmpty(otherUserId)) return;
             
+            // Get call type before removing from activeCalls
+            string callType = "audio";
+            if (activeCalls.TryGetValue(callId, out var callState))
+            {
+                callType = callState.callType;
+            }
+            
             // Remove call state when call ends
             activeCalls.TryRemove(callId, out _);
+            
+            // Save call history: ended call with duration
+            await SaveCallHistoryMessage(currentUserId, otherUserId, callType, "ended", duration);
             
             var payload = new { 
                 callerUserId = currentUserId, 

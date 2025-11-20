@@ -56,12 +56,22 @@ builder.Services.AddCors(c =>
             "http://localhost:3000",      // Web frontend
             "http://localhost:3001",      // Web frontend alt
             "http://localhost:8081",      // React Native Metro bundler / Expo web
+            "http://localhost:8082",      // Expo web alternative port
             "http://localhost:19000",     // Expo development
+            "http://localhost:19001",     // Expo development alt
+            "http://localhost:19002",     // Expo development alt 2
             "http://localhost:19006",     // Expo tunnel
             "http://127.0.0.1:3000",      // iOS simulator web
             "http://127.0.0.1:3001",      // iOS simulator web alt
             "http://127.0.0.1:8081",      // iOS simulator
-            "http://10.0.2.2:8081"        // Android emulator
+            "http://127.0.0.1:8082",      // iOS simulator alt
+            "http://127.0.0.1:19000",     // iOS simulator Expo
+            "http://127.0.0.1:19001",     // iOS simulator Expo alt
+            "http://127.0.0.1:19002",     // iOS simulator Expo alt 2
+            "http://127.0.0.1:19006",     // iOS simulator Expo tunnel
+            "http://10.0.2.2:8081",       // Android emulator
+            "http://10.0.2.2:19000",      // Android emulator Expo
+            "http://10.0.2.2:19006"       // Android emulator Expo tunnel
         )
         .AllowAnyMethod()
         .AllowAnyHeader()
@@ -123,7 +133,7 @@ app.MapGet("/api/chat/history", async (
     var items = cursor.Select(d =>
     {
         var sentVal = d.GetValue("sentAt", BsonNull.Value);
-        DateTimeOffset sentAtValue;
+        DateTimeOffset sentAtValue = DateTimeOffset.MinValue;
         if (sentVal is BsonDateTime bdt)
         {
             sentAtValue = bdt.ToUniversalTime();
@@ -132,9 +142,19 @@ app.MapGet("/api/chat/history", async (
         {
             sentAtValue = parsed.ToUniversalTime();
         }
-        else
+
+        // Fallback: if sentAt is missing or invalid (MinValue), try to extract from _id
+        if (sentAtValue == DateTimeOffset.MinValue || sentAtValue == default)
         {
-            sentAtValue = DateTimeOffset.MinValue;
+            var idVal = d.GetValue("_id", BsonNull.Value);
+            if (idVal is BsonObjectId objectId)
+            {
+                sentAtValue = objectId.Value.CreationTime.ToUniversalTime();
+            }
+            else if (idVal.IsString && MongoDB.Bson.ObjectId.TryParse(idVal.AsString, out var oid))
+            {
+                sentAtValue = oid.CreationTime.ToUniversalTime();
+            }
         }
 
         // Extract reactions as emoji -> [userIds]
@@ -208,6 +228,43 @@ app.MapGet("/api/chat/history", async (
                      : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
              : d["audioDuration"].AsDouble;
 
+         // Extract call-specific fields for call messages
+         string? callType = null;
+         string? callStatus = null;
+         int? callDuration = null;
+         
+         if (messageType == "call")
+         {
+             var callTypeVal = d.GetValue("callType", BsonNull.Value);
+             if (!callTypeVal.IsBsonNull && callTypeVal.IsString)
+             {
+                 callType = callTypeVal.AsString;
+             }
+             
+             var callStatusVal = d.GetValue("callStatus", BsonNull.Value);
+             if (!callStatusVal.IsBsonNull && callStatusVal.IsString)
+             {
+                 callStatus = callStatusVal.AsString;
+             }
+             
+             var callDurationVal = d.GetValue("callDuration", BsonNull.Value);
+             if (!callDurationVal.IsBsonNull)
+             {
+                 if (callDurationVal.IsInt32)
+                 {
+                     callDuration = callDurationVal.AsInt32;
+                 }
+                 else if (callDurationVal.IsInt64)
+                 {
+                     callDuration = (int)callDurationVal.AsInt64;
+                 }
+                 else if (callDurationVal.IsDouble)
+                 {
+                     callDuration = (int)callDurationVal.AsDouble;
+                 }
+             }
+         }
+
          // Determine read status: message is read if read field is true OR readAt exists and is not null
          var readVal = d.GetValue("read", BsonNull.Value);
          var readAtVal = d.GetValue("readAt", BsonNull.Value);
@@ -236,6 +293,9 @@ app.MapGet("/api/chat/history", async (
              messageType = messageType,
              audioUrl = audioUrl,
              audioDuration = audioDuration,
+             callType = callType,
+             callStatus = callStatus,
+             callDuration = callDuration,
              read = isRead,
              isRead = isRead // Include both for compatibility
          };
@@ -278,7 +338,7 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
     var items = cursor.Select(d =>
     {
         var sentVal = d.GetValue("sentAt", BsonNull.Value);
-        DateTimeOffset sentAtValue;
+        DateTimeOffset sentAtValue = DateTimeOffset.MinValue;
         if (sentVal is BsonDateTime bdt)
         {
             sentAtValue = bdt.ToUniversalTime();
@@ -287,9 +347,19 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
         {
             sentAtValue = parsed.ToUniversalTime();
         }
-        else
+
+        // Fallback: if sentAt is missing or invalid (MinValue), try to extract from _id
+        if (sentAtValue == DateTimeOffset.MinValue || sentAtValue == default)
         {
-            sentAtValue = DateTimeOffset.MinValue;
+            var idVal = d.GetValue("_id", BsonNull.Value);
+            if (idVal is BsonObjectId objectId)
+            {
+                sentAtValue = objectId.Value.CreationTime.ToUniversalTime();
+            }
+            else if (idVal.IsString && MongoDB.Bson.ObjectId.TryParse(idVal.AsString, out var oid))
+            {
+                sentAtValue = oid.CreationTime.ToUniversalTime();
+            }
         }
 
         // Extract reactions as emoji -> [userIds]
@@ -365,6 +435,43 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
             Console.WriteLine($"[Program] Voice message retrieved - ID: {d.GetValue("messageId", BsonNull.Value)}, audioUrl: {audioUrl ?? "null"}, audioDuration: {audioDuration?.ToString() ?? "null"}");
         }
         
+        // Extract call-specific fields for call messages
+        string? callType = null;
+        string? callStatus = null;
+        int? callDuration = null;
+        
+        if (messageType == "call")
+        {
+            var callTypeVal = d.GetValue("callType", BsonNull.Value);
+            if (!callTypeVal.IsBsonNull && callTypeVal.IsString)
+            {
+                callType = callTypeVal.AsString;
+            }
+            
+            var callStatusVal = d.GetValue("callStatus", BsonNull.Value);
+            if (!callStatusVal.IsBsonNull && callStatusVal.IsString)
+            {
+                callStatus = callStatusVal.AsString;
+            }
+            
+            var callDurationVal = d.GetValue("callDuration", BsonNull.Value);
+            if (!callDurationVal.IsBsonNull)
+            {
+                if (callDurationVal.IsInt32)
+                {
+                    callDuration = callDurationVal.AsInt32;
+                }
+                else if (callDurationVal.IsInt64)
+                {
+                    callDuration = (int)callDurationVal.AsInt64;
+                }
+                else if (callDurationVal.IsDouble)
+                {
+                    callDuration = (int)callDurationVal.AsDouble;
+                }
+            }
+        }
+        
         var imageUrl = d.GetValue("imageUrl", BsonNull.Value).IsBsonNull ? null : d["imageUrl"].AsString;
         var replyToMessageId = d.GetValue("replyToMessageId", BsonNull.Value).IsBsonNull ? null : d["replyToMessageId"].AsString;
         
@@ -412,6 +519,9 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
             imageUrl = imageUrl,
             replyToMessageId = replyToMessageId,
             reactions = reactions,
+            callType = callType,
+            callStatus = callStatus,
+            callDuration = callDuration,
             read = isRead,
             isRead = isRead // Include both for compatibility
         };

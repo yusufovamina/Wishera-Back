@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using auth_service.Serializers;
 
 namespace auth_service.Models
 {
@@ -96,6 +97,7 @@ namespace auth_service.Models
         public List<string> AllowedViewerIds { get; set; } = new List<string>();
 
         [BsonElement("birthday")]
+        [BsonSerializer(typeof(NullableDateTimeSerializer))]
         public DateTime? Birthday { get; set; }
 
         // OAuth provider IDs for external authentication

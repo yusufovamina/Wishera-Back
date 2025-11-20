@@ -120,13 +120,28 @@ namespace auth_service.Controllers
         [HttpGet("callback/{provider}")]
         public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state, string provider)
         {
+            Console.WriteLine($"[OAuth Debug] Callback received - Provider: '{provider}', State: '{state}', Code present: {!string.IsNullOrEmpty(code)}");
+            
+            if (string.IsNullOrEmpty(code))
+            {
+                Console.WriteLine("[OAuth Error] Code parameter is missing");
+                return BadRequest(new { message = "Authorization code is required" });
+            }
+            
+            if (string.IsNullOrEmpty(state))
+            {
+                Console.WriteLine("[OAuth Error] State parameter is missing");
+                return BadRequest(new { message = "State parameter is required" });
+            }
+            
             string codeVerifier;
             string? origin = null;
             lock (GoogleStateToCodeVerifier)
             {
                 if (!GoogleStateToCodeVerifier.TryGetValue(state, out codeVerifier))
                 {
-                    return BadRequest(new { message = "Invalid state" });
+                    Console.WriteLine($"[OAuth Error] Invalid state: '{state}'. Available states: {string.Join(", ", GoogleStateToCodeVerifier.Keys)}");
+                    return BadRequest(new { message = "Invalid state. The OAuth session may have expired. Please try again." });
                 }
                 GoogleStateToCodeVerifier.Remove(state);
             }
@@ -158,6 +173,19 @@ namespace auth_service.Controllers
             {
                 var clientId = config["Authentication:Google:ClientId"];
                 var clientSecret = config["Authentication:Google:ClientSecret"];
+                
+                if (string.IsNullOrWhiteSpace(clientId) || clientId == "YOUR_ACTUAL_GOOGLE_CLIENT_ID")
+                {
+                    Console.WriteLine("[OAuth Error] Google ClientId is not configured");
+                    return StatusCode(500, new { message = "Google OAuth not configured. Please set up Google OAuth credentials in appsettings.json" });
+                }
+                
+                if (string.IsNullOrWhiteSpace(clientSecret))
+                {
+                    Console.WriteLine("[OAuth Error] Google ClientSecret is not configured");
+                    return StatusCode(500, new { message = "Google OAuth ClientSecret is not configured" });
+                }
+                
                 using var http = new HttpClient();
                 var tokenReq = new HttpRequestMessage(HttpMethod.Post, "https://oauth2.googleapis.com/token")
                 {
@@ -174,11 +202,26 @@ namespace auth_service.Controllers
                 var tokenRes = await http.SendAsync(tokenReq);
                 if (!tokenRes.IsSuccessStatusCode)
                 {
-                    return StatusCode((int)tokenRes.StatusCode, new { message = "Failed to exchange code" });
+                    var errorContent = await tokenRes.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[OAuth Error] Token exchange failed: Status {tokenRes.StatusCode}, Response: {errorContent}");
+                    return StatusCode((int)tokenRes.StatusCode, new { message = "Failed to exchange code", details = errorContent });
                 }
                 var tokenJson = await tokenRes.Content.ReadAsStringAsync();
+                Console.WriteLine($"[OAuth Debug] Token response received");
                 var tokenDoc = System.Text.Json.JsonDocument.Parse(tokenJson);
-                var idToken = tokenDoc.RootElement.GetProperty("id_token").GetString();
+                
+                if (!tokenDoc.RootElement.TryGetProperty("id_token", out var idTokenElement))
+                {
+                    Console.WriteLine($"[OAuth Error] id_token not found in token response: {tokenJson}");
+                    return StatusCode(400, new { message = "Invalid token response from Google" });
+                }
+                
+                var idToken = idTokenElement.GetString();
+                if (string.IsNullOrEmpty(idToken))
+                {
+                    Console.WriteLine("[OAuth Error] id_token is null or empty");
+                    return StatusCode(400, new { message = "Invalid id_token from Google" });
+                }
 
                 // Validate id_token signature and claims using Google's OpenID configuration
                 var configurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
@@ -199,7 +242,17 @@ namespace auth_service.Controllers
                 };
 
                 var handler = new JwtSecurityTokenHandler();
-                var principal = handler.ValidateToken(idToken, tokenValidationParameters, out _);
+                ClaimsPrincipal principal;
+                try
+                {
+                    principal = handler.ValidateToken(idToken, tokenValidationParameters, out _);
+                    Console.WriteLine("[OAuth Debug] ID token validated successfully");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[OAuth Error] Token validation failed: {ex.Message}");
+                    return StatusCode(400, new { message = "Failed to validate Google token", details = ex.Message });
+                }
                 
                 // Extract claims from Google ID token
                 email = principal.FindFirst(ClaimTypes.Email)?.Value 
@@ -243,8 +296,18 @@ namespace auth_service.Controllers
             
             Console.WriteLine($"[OAuth Debug] Looking up user - GoogleId: '{googleId}', Email: '{normalizedEmail}'");
             
-            // For Google OAuth, first try to find by Google ID, then by email
-            var user = await dbContext.Users.Find(u => u.GoogleId == googleId).FirstOrDefaultAsync();
+            auth_service.Models.User? user = null;
+            try
+            {
+                // For Google OAuth, first try to find by Google ID, then by email
+                user = await dbContext.Users.Find(u => u.GoogleId == googleId).FirstOrDefaultAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OAuth Error] Database query failed: {ex.Message}");
+                Console.WriteLine($"[OAuth Error] Stack trace: {ex.StackTrace}");
+                return StatusCode(500, new { message = "Database error occurred", details = ex.Message });
+            }
             if (user == null)
             {
                 Console.WriteLine($"[OAuth Debug] No user found with GoogleId, trying email lookup");

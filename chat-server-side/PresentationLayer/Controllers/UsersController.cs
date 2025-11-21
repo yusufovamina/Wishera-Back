@@ -24,9 +24,9 @@ namespace PresentationLayer.Controllers
         public async Task<IActionResult> GetUsers(
             int pageNumber = 1,
             int pageSize = 10,
-            string searchText = null)
+            string? searchText = null)
         {
-            var users = await userRetrievalService.GetUsers(pageNumber, pageSize, searchText);
+            var users = await userRetrievalService.GetUsers(pageNumber, pageSize, searchText ?? "");
             return Ok(users);
         }
 

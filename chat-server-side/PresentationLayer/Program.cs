@@ -530,6 +530,119 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
     return Results.Ok(items);
 });
 
+// Get all conversations for a user (returns all users they've messaged)
+app.MapGet("/api/chat/conversations/{userId}", async (
+    [FromServices] IMongoClient mongoClient,
+    [FromServices] IConfiguration configuration,
+    string userId) =>
+{
+    try
+    {
+        if (mongoClient == null || configuration == null)
+        {
+            return Results.Ok(new List<object>());
+        }
+
+        var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
+        var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
+        var db = mongoClient.GetDatabase(dbName);
+        var collection = db.GetCollection<BsonDocument>(collectionName);
+
+        // Find all messages where the user is either sender or recipient
+        var filter = Builders<BsonDocument>.Filter.Or(
+            Builders<BsonDocument>.Filter.Eq("senderUserId", userId),
+            Builders<BsonDocument>.Filter.Eq("recipientUserId", userId)
+        );
+
+        // Get distinct conversation IDs
+        var conversationIds = await collection.DistinctAsync<string>("conversationId", filter);
+        var conversationIdList = await conversationIds.ToListAsync();
+
+        // Extract unique user IDs from conversation IDs
+        var partnerUserIds = new HashSet<string>();
+        foreach (var conversationId in conversationIdList)
+        {
+            var parts = conversationId.Split(':');
+            if (parts.Length == 2)
+            {
+                var otherUserId = parts[0] == userId ? parts[1] : parts[0];
+                if (otherUserId != userId)
+                {
+                    partnerUserIds.Add(otherUserId);
+                }
+            }
+        }
+
+        // For each partner, get the last message
+        var conversations = new List<object>();
+        foreach (var partnerId in partnerUserIds)
+        {
+            var conversationId = string.CompareOrdinal(userId, partnerId) < 0
+                ? $"{userId}:{partnerId}"
+                : $"{partnerId}:{userId}";
+
+            // Get the last message for this conversation
+            var conversationFilter = Builders<BsonDocument>.Filter.Eq("conversationId", conversationId);
+            var lastMessageDoc = await collection
+                .Find(conversationFilter)
+                .Sort(Builders<BsonDocument>.Sort.Descending("sentAt"))
+                .Limit(1)
+                .FirstOrDefaultAsync();
+
+            if (lastMessageDoc != null)
+            {
+                var sentVal = lastMessageDoc.GetValue("sentAt", BsonNull.Value);
+                DateTimeOffset sentAtValue = DateTimeOffset.MinValue;
+                if (sentVal is BsonDateTime bdt)
+                {
+                    sentAtValue = bdt.ToUniversalTime();
+                }
+                else if (sentVal.IsString && DateTimeOffset.TryParse(sentVal.AsString, out var parsed))
+                {
+                    sentAtValue = parsed.ToUniversalTime();
+                }
+
+                var messageType = lastMessageDoc.GetValue("messageType", BsonNull.Value).IsBsonNull
+                    ? "text"
+                    : lastMessageDoc["messageType"].AsString;
+
+                conversations.Add(new
+                {
+                    userId = partnerId,
+                    lastMessage = new
+                    {
+                        id = lastMessageDoc.GetValue("messageId", BsonNull.Value).IsBsonNull ? string.Empty : lastMessageDoc["messageId"].AsString,
+                        text = lastMessageDoc.GetValue("text", BsonNull.Value).IsBsonNull ? string.Empty : lastMessageDoc["text"].AsString,
+                        messageType = messageType,
+                        sentAt = sentAtValue != DateTimeOffset.MinValue ? sentAtValue.ToString("O") : null,
+                        senderUserId = lastMessageDoc.GetValue("senderUserId", BsonNull.Value).IsBsonNull ? string.Empty : lastMessageDoc["senderUserId"].AsString
+                    }
+                });
+            }
+        }
+
+        // Sort by last message time (most recent first)
+        conversations = conversations.OrderByDescending(c =>
+        {
+            var lastMsg = ((dynamic)c).lastMessage;
+            var sentAt = lastMsg?.sentAt?.ToString() ?? "";
+            if (DateTimeOffset.TryParse(sentAt, out DateTimeOffset date))
+            {
+                return date;
+            }
+            return DateTimeOffset.MinValue;
+        }).ToList();
+
+        return Results.Ok(conversations);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Program] Error getting conversations: {ex.Message}");
+        Console.WriteLine($"[Program] Stack trace: {ex.StackTrace}");
+        return Results.StatusCode(500);
+    }
+});
+
 // Edit a message text
 app.MapPost("/api/chat/message/edit", async (
     [FromServices] IMongoClient mongoClient,

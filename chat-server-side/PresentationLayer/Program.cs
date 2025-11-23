@@ -220,13 +220,26 @@ app.MapGet("/api/chat/history", async (
                      : d["customData"].AsBsonDocument["audioUrl"].AsString))
              : d["audioUrl"].AsString;
          
-         double? audioDuration = d.GetValue("audioDuration", BsonNull.Value).IsBsonNull
-             ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
-                 ? (double?)null
-                 : (d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value).IsBsonNull
-                     ? (double?)null
-                     : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
-             : d["audioDuration"].AsDouble;
+         // Helper function to safely convert BsonValue to double (handles both int and double)
+         double? GetAudioDuration(BsonValue? value)
+         {
+             if (value == null || value.IsBsonNull) return null;
+             if (value.IsInt32) return (double)value.AsInt32;
+             if (value.IsInt64) return (double)value.AsInt64;
+             if (value.IsDouble) return value.AsDouble;
+             if (double.TryParse(value.ToString(), out var parsed)) return parsed;
+             return null;
+         }
+         
+         var audioDurationVal = d.GetValue("audioDuration", BsonNull.Value);
+         double? audioDuration = GetAudioDuration(audioDurationVal);
+         
+         // If not found at top level, check customData
+         if (audioDuration == null && !d.GetValue("customData", BsonNull.Value).IsBsonNull && d["customData"].IsBsonDocument)
+         {
+             var customAudioDuration = d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value);
+             audioDuration = GetAudioDuration(customAudioDuration);
+         }
 
          // Extract call-specific fields for call messages
          string? callType = null;
@@ -421,13 +434,25 @@ app.MapGet("/api/chat/history/{userId}/{peerUserId}", async (
                     : d["customData"].AsBsonDocument["audioUrl"].AsString))
             : audioUrlVal.AsString;
         
-        double? audioDuration = audioDurationVal.IsBsonNull
-            ? (d.GetValue("customData", BsonNull.Value).IsBsonNull || !d["customData"].IsBsonDocument
-                ? (double?)null
-                : (d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value).IsBsonNull
-                    ? (double?)null
-                    : d["customData"].AsBsonDocument["audioDuration"].AsDouble))
-            : audioDurationVal.AsDouble;
+        // Helper function to safely convert BsonValue to double (handles both int and double)
+        double? GetAudioDuration(BsonValue? value)
+        {
+            if (value == null || value.IsBsonNull) return null;
+            if (value.IsInt32) return (double)value.AsInt32;
+            if (value.IsInt64) return (double)value.AsInt64;
+            if (value.IsDouble) return value.AsDouble;
+            if (double.TryParse(value.ToString(), out var parsed)) return parsed;
+            return null;
+        }
+        
+        double? audioDuration = GetAudioDuration(audioDurationVal);
+        
+        // If not found at top level, check customData
+        if (audioDuration == null && !d.GetValue("customData", BsonNull.Value).IsBsonNull && d["customData"].IsBsonDocument)
+        {
+            var customAudioDuration = d["customData"].AsBsonDocument.GetValue("audioDuration", BsonNull.Value);
+            audioDuration = GetAudioDuration(customAudioDuration);
+        }
         
         // Log voice messages for debugging
         if (messageType == "voice")
@@ -671,15 +696,37 @@ app.MapPost("/api/chat/message/delete", async (
 {
     if (string.IsNullOrWhiteSpace(body?.MessageId))
     {
+        Console.WriteLine("[Program] Delete message: MessageId is required but was null or empty");
         return Results.BadRequest(new { message = "messageId is required" });
     }
+    
+    Console.WriteLine($"[Program] Delete message request received: MessageId={body.MessageId}");
+    
     var dbName = configuration["ChatMongo:Database"] ?? "wishlist_chat";
     var collectionName = configuration["ChatMongo:Collection"] ?? "messages";
     var db = mongoClient.GetDatabase(dbName);
     var collection = db.GetCollection<BsonDocument>(collectionName);
-    var filter = Builders<BsonDocument>.Filter.Eq("messageId", body.MessageId);
+    
+    // Try both messageId and id fields (in case messages were stored with different field names)
+    var filter = Builders<BsonDocument>.Filter.Or(
+        Builders<BsonDocument>.Filter.Eq("messageId", body.MessageId),
+        Builders<BsonDocument>.Filter.Eq("id", body.MessageId)
+    );
+    
+    // First check if message exists
+    var existingMessage = await collection.Find(filter).FirstOrDefaultAsync();
+    if (existingMessage == null)
+    {
+        Console.WriteLine($"[Program] Delete message: Message with MessageId={body.MessageId} not found in database");
+        // Try to find any message with similar ID for debugging
+        var allMessages = await collection.Find(Builders<BsonDocument>.Filter.Empty).Limit(5).ToListAsync();
+        Console.WriteLine($"[Program] Sample message IDs in database: {string.Join(", ", allMessages.Select(m => m.GetValue("messageId", "N/A").ToString()).Take(5))}");
+    }
+    
     var result = await collection.DeleteOneAsync(filter);
-    return result.DeletedCount > 0 ? Results.Ok(new { deleted = true }) : Results.NotFound(new { deleted = false });
+    Console.WriteLine($"[Program] Delete message result: DeletedCount={result.DeletedCount}, MessageId={body.MessageId}");
+    
+    return result.DeletedCount > 0 ? Results.Ok(new { deleted = true }) : Results.NotFound(new { deleted = false, messageId = body.MessageId });
 });
 
 var defaultWallpapers = new List<WallpaperCatalogItem>

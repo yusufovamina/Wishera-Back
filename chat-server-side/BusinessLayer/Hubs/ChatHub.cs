@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Driver;
 using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace BusinessLayer.Hubs
 {
@@ -238,7 +239,34 @@ namespace BusinessLayer.Hubs
                             foreach (var kvp in customData)
                             {
                                 Console.WriteLine($"[ChatHub] Processing customData field: {kvp.Key} = {kvp.Value} (type: {kvp.Value?.GetType().Name})");
-                                customDataBson.Add(kvp.Key, MongoDB.Bson.BsonValue.Create(kvp.Value));
+                                
+                                // Convert JsonElement to proper type before creating BsonValue
+                                MongoDB.Bson.BsonValue bsonValue;
+                                if (kvp.Value == null)
+                                {
+                                    bsonValue = MongoDB.Bson.BsonNull.Value;
+                                }
+                                else if (kvp.Value is System.Text.Json.JsonElement jsonElement)
+                                {
+                                    // Convert JsonElement to appropriate BsonValue based on its value kind
+                                    bsonValue = jsonElement.ValueKind switch
+                                    {
+                                        System.Text.Json.JsonValueKind.String => MongoDB.Bson.BsonValue.Create(jsonElement.GetString()),
+                                        System.Text.Json.JsonValueKind.Number => jsonElement.TryGetInt32(out var intVal) 
+                                            ? MongoDB.Bson.BsonValue.Create(intVal)
+                                            : MongoDB.Bson.BsonValue.Create(jsonElement.GetDouble()),
+                                        System.Text.Json.JsonValueKind.True => MongoDB.Bson.BsonValue.Create(true),
+                                        System.Text.Json.JsonValueKind.False => MongoDB.Bson.BsonValue.Create(false),
+                                        System.Text.Json.JsonValueKind.Null => MongoDB.Bson.BsonNull.Value,
+                                        _ => MongoDB.Bson.BsonValue.Create(jsonElement.ToString())
+                                    };
+                                }
+                                else
+                                {
+                                    bsonValue = MongoDB.Bson.BsonValue.Create(kvp.Value);
+                                }
+                                
+                                customDataBson.Add(kvp.Key, bsonValue);
                                 
                                 // Extract common fields to top level for easier querying
                                 if (kvp.Key == "messageType" && kvp.Value != null)
@@ -255,9 +283,33 @@ namespace BusinessLayer.Hubs
                                 }
                                 else if (kvp.Key == "audioDuration" && kvp.Value != null)
                                 {
-                                    // Handle both int and double for duration
+                                    // Handle both int and double for duration, including JsonElement
                                     double durationValue = 0;
-                                    if (kvp.Value is int intDuration)
+                                    if (kvp.Value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                    {
+                                        // Extract numeric value from JsonElement
+                                        if (jsonElement.TryGetInt32(out var intVal))
+                                        {
+                                            durationValue = intVal;
+                                            doc.Add("audioDuration", intVal);
+                                        }
+                                        else if (jsonElement.TryGetDouble(out var doubleVal))
+                                        {
+                                            durationValue = doubleVal;
+                                            doc.Add("audioDuration", doubleVal);
+                                        }
+                                        else if (jsonElement.TryGetInt64(out var longVal))
+                                        {
+                                            durationValue = (double)longVal;
+                                            doc.Add("audioDuration", durationValue);
+                                        }
+                                        else
+                                        {
+                                            durationValue = 0;
+                                            doc.Add("audioDuration", 0);
+                                        }
+                                    }
+                                    else if (kvp.Value is int intDuration)
                                     {
                                         durationValue = intDuration;
                                         doc.Add("audioDuration", intDuration);
@@ -279,7 +331,8 @@ namespace BusinessLayer.Hubs
                                     }
                                     else
                                     {
-                                        doc.Add("audioDuration", MongoDB.Bson.BsonValue.Create(kvp.Value));
+                                        durationValue = 0;
+                                        doc.Add("audioDuration", 0);
                                     }
                                     Console.WriteLine($"[ChatHub] Added audioDuration to document: {durationValue}");
                                 }
